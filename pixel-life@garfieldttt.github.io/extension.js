@@ -1,6 +1,7 @@
 // Pixel Life Wallpaper: renders the pixel-art scene of engine/ into an
 // actor in the shell's background group, one scene per monitor.
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import St from 'gi://St';
 import Cogl from 'gi://Cogl';
 import Clutter from 'gi://Clutter';
@@ -13,24 +14,36 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {Engine} from './engine/scene.js';
 
+const DEFAULT_LAT = 48;
+const ZONE_TABLES = ['/usr/share/zoneinfo/zone1970.tab', '/usr/share/zoneinfo/zone.tab'];
+
 // Latitude of the computer's time zone from the tz database, so sunrise
-// and sunset fit the place without a setting; 48 when the zone is unknown.
-function zoneLatitude() {
+// and sunset fit the place without a setting. Read without blocking the
+// shell; calls back once with the latitude, or not at all when the zone
+// is not listed.
+function readZoneLatitude(cancellable, callback, files = ZONE_TABLES) {
+    if (!files.length)
+        return;
     const id = GLib.TimeZone.new_local().get_identifier();
-    for (const file of ['/usr/share/zoneinfo/zone1970.tab', '/usr/share/zoneinfo/zone.tab']) {
+    Gio.File.new_for_path(files[0]).load_contents_async(cancellable, (file, res) => {
+        let bytes;
         try {
-            const [, bytes] = GLib.file_get_contents(file);
-            for (const line of new TextDecoder().decode(bytes).split('\n')) {
-                const cols = line.split('\t');
-                const m = cols[2] === id && /^([+-])(\d\d)(\d\d)(\d\d)?[+-]/.exec(cols[1]);
-                if (m)
-                    return (m[1] === '-' ? -1 : 1) * (+m[2] + m[3] / 60 + (m[4] ?? 0) / 3600);
-            }
-        } catch {
-            // file missing, try the next one
+            [, bytes] = file.load_contents_finish(res);
+        } catch (e) {
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                readZoneLatitude(cancellable, callback, files.slice(1));
+            return;
         }
-    }
-    return 48;
+        for (const line of new TextDecoder().decode(bytes).split('\n')) {
+            const cols = line.split('\t');
+            const m = cols[2] === id && /^([+-])(\d\d)(\d\d)(\d\d)?[+-]/.exec(cols[1]);
+            if (m) {
+                callback((m[1] === '-' ? -1 : 1) * (+m[2] + m[3] / 60 + (m[4] ?? 0) / 3600));
+                return;
+            }
+        }
+        readZoneLatitude(cancellable, callback, files.slice(1));
+    });
 }
 
 class MonitorScene {
@@ -79,15 +92,22 @@ class MonitorScene {
     }
 }
 
-// GNOME 49 replaced get_maximized() with is_maximized()
+// GNOME 49 added is_maximized(); GNOME 48 only has the two properties
 function isMaximized(w) {
-    return w.is_maximized ? w.is_maximized() : w.get_maximized() === Meta.MaximizeFlags.BOTH;
+    return w.is_maximized?.() ?? (w.maximized_horizontally && w.maximized_vertically);
 }
 
 export default class PixelLifeExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._scenes = [];
+        this._lat = DEFAULT_LAT;
+        this._cancellable = new Gio.Cancellable();
+        readZoneLatitude(this._cancellable, lat => {
+            this._lat = lat;
+            for (const s of this._scenes)
+                s.engine.setOption('lat', lat);
+        });
         this._group = Main.layoutManager._backgroundGroup;
         this._build();
         this._monitorsId = Main.layoutManager.connect('monitors-changed', () => this._rebuild());
@@ -99,13 +119,15 @@ export default class PixelLifeExtension extends Extension {
         this._settingsId = this._settings.connect('changed', (_s, key) => this._onSetting(key));
         this._menuItems = [];
         this._bgSignals = [];
+        this._menuSignals = [];
         this._hookMenus();
         this._syncIndicator();
     }
 
     disable() {
-        this._indicator?.destroy();
-        this._indicator = null;
+        this._cancellable.cancel();
+        this._cancellable = null;
+        this._removeIndicator();
         this._unhookMenus();
         this._stop();
         if (this._monitorsId)
@@ -121,9 +143,8 @@ export default class PixelLifeExtension extends Extension {
     }
 
     _build() {
-        const lat = zoneLatitude();
         for (const monitor of Main.layoutManager.monitors) {
-            const scene = new MonitorScene(monitor, this._settings, lat);
+            const scene = new MonitorScene(monitor, this._settings, this._lat);
             this._group.add_child(scene.actor);
             this._scenes.push(scene);
         }
@@ -172,15 +193,23 @@ export default class PixelLifeExtension extends Extension {
             this._indicator = new PanelMenu.Button(0.5, 'Pixel Life');
             this._indicator.add_child(new St.Icon({icon_name: 'preferences-desktop-wallpaper-symbolic', style_class: 'system-status-icon'}));
             const sync = this._fillMenu(this._indicator.menu);
-            this._indicator.menu.connect('open-state-changed', (_m, open) => {
+            this._indicatorOpenId = this._indicator.menu.connect('open-state-changed', (_m, open) => {
                 if (open)
                     sync();
             });
             Main.panel.addToStatusArea(this.uuid, this._indicator);
-        } else if (!want && this._indicator) {
-            this._indicator.destroy();
-            this._indicator = null;
+        } else if (!want) {
+            this._removeIndicator();
         }
+    }
+
+    _removeIndicator() {
+        if (!this._indicator)
+            return;
+        this._indicator.menu.disconnect(this._indicatorOpenId);
+        this._indicator.destroy();
+        this._indicator = null;
+        this._indicatorOpenId = null;
     }
 
     // Right-click menu on the desktop background: a "Pixel Life" submenu.
@@ -198,8 +227,11 @@ export default class PixelLifeExtension extends Extension {
         for (const [bgm, id] of this._bgSignals ?? [])
             bgm.disconnect(id);
         this._bgSignals = [];
-        for (const item of [...(this._menuItems ?? [])])
-            item.destroy();
+        for (const [menu, ids] of this._menuSignals ?? [])
+            ids.forEach(id => menu.disconnect(id));
+        this._menuSignals = [];
+        for (const [, items] of this._menuItems ?? [])
+            items.forEach(i => i.destroy());
         this._menuItems = [];
     }
 
@@ -216,18 +248,13 @@ export default class PixelLifeExtension extends Extension {
         });
         menu.addMenuItem(sep);
         menu.addMenuItem(sub);
-        for (const item of [sep, sub]) {
-            this._menuItems.push(item);
-            item.connect('destroy', () => {
-                this._menuItems = this._menuItems.filter(i => i !== item);
-            });
-        }
-        let menuGone = false;
-        menu.connect('destroy', () => (menuGone = true));
-        sub.connect('destroy', () => {
-            if (!menuGone)
-                menu.disconnect(openId);
+        // a replaced background takes its menu and our items with it
+        const destroyId = menu.connect('destroy', () => {
+            this._menuSignals = this._menuSignals.filter(([m]) => m !== menu);
+            this._menuItems = this._menuItems.filter(([m]) => m !== menu);
         });
+        this._menuSignals.push([menu, [openId, destroyId]]);
+        this._menuItems.push([menu, [sep, sub]]);
     }
 
     _destroyScenes() {
