@@ -246,11 +246,13 @@ export class Farm {
             Math.abs(x - this.mill.x) < 60 && y > this.mill.y - 110 && y < this.mill.y + 14;
         // scattered trees with open meadow between them
         this.trees = [];
+        // sized against the mill, barn and tractor: a tree is about barn
+        // height and grows towards the front
         for (let i = 0; i < W / 16; i++) {
             const x = randi(0, W), y = randi(this.meadowTop + 8, this.roadTop - 6);
             const far = (y - this.meadowTop) / (this.roadTop - this.meadowTop);
-            if (!blocked(x, 18, y) && !this.trees.some(t => Math.abs(t.x - x) < 48 && Math.abs(t.y - y) < 24))
-                this.trees.push({x, y, s: Math.round(10 + far * 14), seed: randi(0, 1e6), pine: chance(0.25)});
+            if (!blocked(x, 30, y) && !this.trees.some(t => Math.abs(t.x - x) < 72 && Math.abs(t.y - y) < 30))
+                this.trees.push({x, y, s: Math.round(18 + far * 20), seed: randi(0, 1e6), pine: chance(0.25)});
         }
         this.trees.sort((a, b) => a.y - b.y);
         this.bits = [];
