@@ -703,6 +703,42 @@ export class Medieval {
             add(this.bonfire.y, [x - 24, this.bonfire.y - 30, 48, 34], () => this._bonfirePile(g, this.bonfire));
         }
         this.sprites.sort((a, b) => a.y - b.y);
+        this._evict();
+    }
+
+    // Stalls go up at the market bell, the maypole or the fire on their
+    // day: whoever stands where one appears steps out in front of it.
+    _evict() {
+        const ob = this._obstacles();
+        const inside = (x, y) => ob.find(o => x > o[0] - 5 && x < o[2] + 5 && y > o[1] && y < o[3]);
+        const out = (x, y) => {
+            const o = inside(x, y);
+            if (!o)
+                return null;
+            const ny = Math.min(this.squareBot - 2, o[3] + 4);
+            return inside(x, ny) ? this._freePoint() : [x - 8, ny];
+        };
+        for (const p of this.people) {
+            if (p.lane !== 'square')
+                continue;
+            const to = out(p.x + 8, p.y);
+            if (to) {
+                [p.x, p.y] = to;
+                if (p.state === 'go' && p.route.length)
+                    p.route = this._route([p.x, p.y], p.route[p.route.length - 1]);
+            }
+        }
+        for (const a of this.animals) {
+            if (a.kind === 'cat')
+                continue;
+            const to = out(a.x, a.y);
+            if (to) {
+                a.x = to[0] + 8;
+                a.y = to[1];
+                a.tx = a.x;
+                a.ty = a.y;
+            }
+        }
     }
 
     // middle of the widest free stretch on the square
@@ -1700,7 +1736,7 @@ export class Medieval {
         p.goal = kind;
         ty = clamp(ty, this.frontY[0], this.squareBot - 2);
         tx = clamp(tx, -30, this.w + 30);
-        if (kind !== 'leave' && this._blocking([tx, ty], [tx, ty + 0.1], this._obstacles()))
+        if (kind !== 'leave' && this._inside(tx, ty, this._obstacles()))
             [tx, ty] = this._freePoint();
         p.route = this._squareRoute([p.x, p.y], [tx, ty]);
         p.state = 'go';
@@ -1727,12 +1763,17 @@ export class Medieval {
         return ob;
     }
 
+    // is a spot (figure left edge, feet) on or right next to an obstacle?
+    _inside(x, y, ob) {
+        return ob.some(o => x + 8 > o[0] - 5 && x + 8 < o[2] + 5 && y > o[1] - 1 && y < o[3] + 1);
+    }
+
     // first obstacle the walk a -> b (feet, figure 16 wide) runs into
     _blocking(a, b, ob) {
-        const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 3));
+        const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1])));
         for (let i = 1; i <= n; i++) {
             const x = a[0] + 8 + (b[0] - a[0]) * i / n, y = a[1] + (b[1] - a[1]) * i / n;
-            const hit = ob.find(o => x > o[0] - 5 && x < o[2] + 5 && y > o[1] && y < o[3]);
+            const hit = ob.find(o => x > o[0] - 5 && x < o[2] + 5 && y > o[1] - 1 && y < o[3] + 1);
             if (hit)
                 return hit;
         }
@@ -1744,8 +1785,6 @@ export class Medieval {
     // 4px grid, then straightened to as few legs as possible.
     _route(a, b) {
         const ob = this._obstacles();
-        if (!this._blocking(a, b, ob))
-            return [b];
         const C = 4, x0 = -32, y0 = this.frontY[0] - 2;
         const cols = Math.ceil((this.w + 64) / C), rows = Math.ceil((this.squareBot - y0) / C);
         const cell = ([x, y]) => [clamp(Math.round((x - x0) / C), 0, cols - 1), clamp(Math.round((y - y0) / C), 0, rows - 1)];
@@ -1763,6 +1802,11 @@ export class Medieval {
             return [cx, cy];
         };
         const s0 = near(cell(a)), g0 = near(cell(b)), N = cols * rows;
+        // a goal inside a stall or prop ends at the nearest free spot
+        if (this._inside(b[0], b[1], ob))
+            b = pt(g0[0], g0[1]);
+        if (!this._blocking(a, b, ob))
+            return [b];
         const prev = new Int32Array(N).fill(-1), start = s0[1] * cols + s0[0], goal = g0[1] * cols + g0[0];
         prev[start] = start;
         const queue = [start];
@@ -1805,7 +1849,7 @@ export class Medieval {
     _freePoint() {
         for (let i = 0; i < 40; i++) {
             const x = rand(10, this.w - 30), y = rand(this.stallY + 14, this.squareBot - 4);
-            if (!this.props.some(p => x + 16 > p.x - 6 && x < p.x + p.w + 6 && Math.abs(y - p.y) < 14) && !this._blocking([x, y], [x, y + 0.1], this._obstacles()))
+            if (!this.props.some(p => x + 16 > p.x - 6 && x < p.x + p.w + 6 && Math.abs(y - p.y) < 14) && !this._inside(x, y, this._obstacles()))
                 return [x, y];
         }
         return [this.w / 2, this.squareBot - 6];
@@ -1945,7 +1989,7 @@ export class Medieval {
             const c = this._walker(env, 'front', {role: 'crier'});
             this._toSquare(c, env);
             const [x, y] = this.well ? [this.well.x - 24, this.well.y + 4] : this._freePoint();
-            c.route = this._squareRoute([c.x, c.y], this._blocking([x, y], [x, y + 0.1], this._obstacles()) ? this._freePoint() : [x, y]);
+            c.route = this._squareRoute([c.x, c.y], this._inside(x, y, this._obstacles()) ? this._freePoint() : [x, y]);
             c.goal = 'cry';
             c.waitT = rand(18, 30);
             c.goals = 0;
@@ -2401,22 +2445,26 @@ export class Medieval {
                 if (env.night)
                     a.gone = a.x < -8 || a.x > this.w + 8 || chance(real / 20);
             } else if (a.kind === 'pig') {
+                // running about the square, round the stalls and props
                 a.life -= real;
-                if (!a.tx || Math.hypot(a.tx - a.x, a.ty - a.y) < 3) {
-                    const ob = this._obstacles();
-                    for (let i = 0; i < 12; i++) {
-                        a.tx = a.life > 0 ? rand(20, this.w - 20) : (a.x < this.w / 2 ? -30 : this.w + 30);
-                        a.ty = rand(this.stallY + 8, this.squareBot - 4);
-                        if (!this._blocking([a.x - 8, a.y], [a.tx - 8, a.ty], ob))
-                            break;
-                    }
+                if (!a.route || !a.route.length) {
+                    const tx = a.life > 0 ? rand(20, this.w - 20) : (a.x < this.w / 2 ? -30 : this.w + 30);
+                    a.route = this._route([a.x - 8, a.y], [tx - 8, rand(this.stallY + 8, this.squareBot - 4)]).map(([x, y]) => [x + 8, y]);
                 }
-                const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy) || 1, sp = 26 * real;
-                a.dir = dx > 0 ? 1 : -1;
-                a.x += dx / d * sp;
-                a.y += dy / d * sp;
-                if (a.life < -30)
-                    a.gone = true;
+                const [tx, ty] = a.route[0];
+                const dx = tx - a.x, dy = ty - a.y, d = Math.hypot(dx, dy), sp = 26 * real;
+                if (Math.abs(dx) > 0.5)
+                    a.dir = dx > 0 ? 1 : -1;
+                if (d <= sp) {
+                    a.x = tx;
+                    a.y = ty;
+                    a.route.shift();
+                } else {
+                    a.x += dx / d * sp;
+                    a.y += dy / d * sp;
+                }
+                if (a.life < -30 || a.x < -40 || a.x > this.w + 40)
+                    a.gone = a.life < 0 || a.gone;
             } else if (a.kind === 'cat') {
                 if (!a.dir)
                     a.dir = a.x < 0 ? 1 : -1;
