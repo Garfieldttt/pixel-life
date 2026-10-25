@@ -404,17 +404,49 @@ export function bigTree(g, x, ground, size, season, seed, snow = 0) {
     g.rect(x - tw / 2 - 2, ground - 3, tw + 4, 2, bark[2]);
     g.rect(x - tw / 2 - 2, ground - 3, 2, 1, bark[3]);
     if (season === 'winter' && seed % 4 !== 0) {
-        // bare branches
-        const cy = ground - th;
-        for (let i = 0; i < 7; i++) {
-            const a = -Math.PI / 2 + ((hash(i, 1, seed) / 1000) - 0.5) * 2.4;
-            const len = size * (0.5 + hash(i, 2, seed) / 1600);
-            const ex = x + Math.cos(a) * len, ey = cy + Math.sin(a) * len;
-            g.line(x, cy + 2, ex, ey, INK);
-            g.line(x + 1, cy + 2, ex + 1, ey, bark[2]);
-            if (snow > 0.2)
-                g.px(ex, ey - 1, 0xf4f8ff);
+        // bare branches: limbs fork and taper from the trunk out to twigs
+        const segs = [];
+        const limb = (x0, y0, a, len, w, depth, k) => {
+            const ex = x0 + Math.cos(a) * len, ey = y0 + Math.sin(a) * len;
+            segs.push([x0, y0, ex, ey, w]);
+            if (depth <= 0)
+                return;
+            for (let j = 0; j < 2; j++) {
+                const da = (j ? 1 : -1) * (0.35 + hash(k, j, seed) / 2500);
+                limb(ex, ey, a + da, len * (0.62 + hash(k, j + 2, seed) / 6000), Math.max(1, w - 1), depth - 1, k * 3 + j + 1);
+            }
+        };
+        const top = ground - th, nl = 3 + seed % 2;
+        for (let i = 0; i < nl; i++) {
+            const a = -Math.PI / 2 + (i / (nl - 1) - 0.5) * 1.7 + (hash(i, 1, seed) / 1000 - 0.5) * 0.3;
+            limb(x, top + 2, a, size * (0.45 + hash(i, 2, seed) / 4000), Math.max(2, Math.floor(tw / 2)), 3, i + 1);
         }
+        limb(x, top + 1, -Math.PI / 2, size * 0.5, Math.max(2, Math.floor(tw / 2)), 3, 9);
+        const stamp = (s, pad, fill) => {
+            const [x0, y0, x1, y1, w] = s, n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
+            for (let i = 0; i <= n; i++) {
+                const px = Math.round(x0 + (x1 - x0) * i / n), py = Math.round(y0 + (y1 - y0) * i / n);
+                const ww = w > 1 && i > n * 0.6 ? w - 1 : w, l = px - Math.floor(ww / 2);
+                if (fill) {
+                    g.rect(l, py, ww, 1, bark[2]);
+                    if (ww > 2)
+                        g.px(l, py, bark[3]);
+                    if (snow > 0.2 && Math.abs(y1 - y0) < Math.abs(x1 - x0) * 0.8)
+                        g.px(px, py - 1, 0xf4f8ff);
+                } else {
+                    g.rect(l - pad, py - pad, ww + pad * 2, 1 + pad * 2, INK);
+                }
+            }
+        };
+        // outlines first, so forks join without seams
+        for (const s of segs)
+            if (s[4] > 1)
+                stamp(s, 1, false);
+        for (const s of segs)
+            if (s[4] > 1)
+                stamp(s, 0, true);
+            else
+                g.line(s[0], s[1], s[2], s[3], bark[1]);
         return;
     }
     // crown: clumps

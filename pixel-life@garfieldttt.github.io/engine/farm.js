@@ -239,20 +239,22 @@ export class Farm {
         this.pond = {x: this.flip ? 30 : W - pondW - 30, y: G + 18, w: pondW, h: 40};
         // the mill stands in the middle distance, big enough to read
         this.mill = {x: this.flip ? randi(70, Math.floor(W * 0.3)) : randi(Math.floor(W * 0.6), W - 80), y: Math.round(this.meadowTop + (G - 40 - this.meadowTop) * 0.75), k: 1.8, a: rand(6.28)};
-        const blocked = (x, pad, y) => [this.house, this.barn, this.silo].some(o => x > o.x - pad && x < o.x + o.w + pad && y > G - 170) ||
-            (x > this.pasture.x1 - pad && x < this.pasture.x2 + pad && y > this.pasture.y1 - 30 && y < this.pasture.y2 + 36) ||
+        const blocked = (x, pad, y, up = 0) => [this.house, this.barn, this.silo].some(o => x > o.x - pad && x < o.x + o.w + pad && y > G - 170) ||
+            (x > this.pasture.x1 - pad && x < this.pasture.x2 + pad && y > this.pasture.y1 - 30 && y < this.pasture.y2 + 36 + up) ||
             (x > this.field.x - pad && x < this.field.x + this.field.w + pad && y > this.field.y1 - 10) ||
             (x > this.pond.x - pad && x < this.pond.x + this.pond.w + pad && y > this.pond.y - 10 && y < this.pond.y + this.pond.h + 20) ||
-            Math.abs(x - this.mill.x) < 60 && y > this.mill.y - 110 && y < this.mill.y + 14;
+            Math.abs(x - this.mill.x) < 40 + pad && y > this.mill.y - 110 && y < this.mill.y + 14 + up;
         // scattered trees with open meadow between them
         this.trees = [];
-        // sized against the mill, barn and tractor: a tree is about barn
-        // height and grows towards the front
+        // sized against the felled stumps: the trunk is about as thick as a
+        // stump, so a tree stands three to four people tall
         for (let i = 0; i < W / 16; i++) {
             const x = randi(0, W), y = randi(this.meadowTop + 8, this.roadTop - 6);
             const far = (y - this.meadowTop) / (this.roadTop - this.meadowTop);
-            if (!blocked(x, 30, y) && !this.trees.some(t => Math.abs(t.x - x) < 72 && Math.abs(t.y - y) < 30))
-                this.trees.push({x, y, s: Math.round(18 + far * 20), seed: randi(0, 1e6), pine: chance(0.25)});
+            const s = Math.round(36 + far * 20);
+            // up: the crown must not hide the pasture or the mill behind it
+            if (!blocked(x, s, y, s * 2.4) && !this.trees.some(t => Math.abs(t.x - x) < (t.s + s) * 1.3 && Math.abs(t.y - y) < 40))
+                this.trees.push({x, y, s, seed: randi(0, 1e6), pine: chance(0.25)});
         }
         this.trees.sort((a, b) => a.y - b.y);
         this.bits = [];
