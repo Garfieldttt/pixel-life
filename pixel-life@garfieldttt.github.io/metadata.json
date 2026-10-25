@@ -1,7 +1,7 @@
 {
   "uuid": "pixel-life@garfieldttt.github.io",
   "name": "Pixel Life Wallpaper",
-  "description": "A living pixel-art wallpaper in a cozy retro style. A big city, the countryside, outer space or a dome under the sea, with lights going on and off in the windows, people, pets, traffic, trains, weather and a day and night cycle that follows your clock. Everything happens at random, so it never repeats. Optional clock overlay (info box, digital or analog).\n\nThe animation pauses while a window is maximized or the screen is locked.",
+  "description": "A living pixel-art wallpaper in a cozy retro style. A village by the lake, a big city, the countryside, outer space or a dome under the sea, with lights going on and off in the windows, people, pets, traffic, trains, weather and a day and night cycle that follows your clock. Everything happens at random, so it never repeats. Optional clock overlay (info box, digital or analog).\n\nThe animation pauses while a window is maximized or the screen is locked.",
   "shell-version": ["48", "49", "50"],
   "url": "https://github.com/Garfieldttt/pixel-life",
   "donations": {
