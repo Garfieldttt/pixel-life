@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.pixel-life" path="/org/gnome/shell/extensions/pixel-life/">
+    <key name="motif" type="s">
+      <default>'village'</default>
+      <summary>Scene: auto, village, city, country, space or underwater</summary>
+    </key>
+    <key name="rotate-minutes" type="i">
+      <range min="5" max="1440"/>
+      <default>60</default>
+      <summary>Minutes between scene changes in auto mode</summary>
+    </key>
+    <key name="pixel-scale" type="i">
+      <range min="2" max="8"/>
+      <default>3</default>
+      <summary>Screen pixels per art pixel</summary>
+    </key>
+    <key name="fps" type="i">
+      <range min="5" max="30"/>
+      <default>20</default>
+      <summary>Frames per second</summary>
+    </key>
+    <key name="clock-style" type="s">
+      <default>'none'</default>
+      <summary>Clock overlay: none, infobox, digital or analog</summary>
+    </key>
+    <key name="clock-position" type="s">
+      <default>'top-right'</default>
+      <summary>Clock position: top-left, top-right, bottom-left or bottom-right</summary>
+    </key>
+    <key name="time-of-day" type="s">
+      <default>'auto'</default>
+      <summary>Time of day: auto (computer clock), morning, day, evening or night</summary>
+    </key>
+    <key name="season" type="s">
+      <default>'auto'</default>
+      <summary>Season: auto (computer date), spring, summer, autumn or winter</summary>
+    </key>
+    <key name="weather" type="s">
+      <default>'auto'</default>
+      <summary>Weather: auto (changes with the season), clear, partly, overcast, drizzle, rain, storm, snow or fog</summary>
+    </key>
+    <key name="people-density" type="i">
+      <range min="0" max="200"/>
+      <default>100</default>
+      <summary>How many people are about, in percent</summary>
+    </key>
+    <key name="traffic-density" type="i">
+      <range min="0" max="200"/>
+      <default>100</default>
+      <summary>How many vehicles are about, in percent</summary>
+    </key>
+    <key name="pause-when-covered" type="b">
+      <default>true</default>
+      <summary>Pause while a maximized or fullscreen window covers the monitor</summary>
+    </key>
+    <key name="show-indicator" type="b">
+      <default>true</default>
+      <summary>Show a Pixel Life menu in the top bar</summary>
+    </key>
+  </schema>
+</schemalist>

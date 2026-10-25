@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pixel Life Preview</title>
+<style>
+  body { margin: 0; background: #111; color: #ddd; font: 14px sans-serif; }
+  canvas { display: block; width: 100vw; image-rendering: pixelated; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; align-items: center; }
+  button, select { background: #333; color: #ddd; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="bar">
+  <select id="motif"><option value="village">Village</option><option value="city">City</option><option value="country">Country</option><option value="space">Space</option><option value="underwater">Under the sea</option><option value="auto">Alternate</option></select>
+  <label>Speed <select id="speed"><option>1</option><option>10</option><option>60</option><option>300</option><option>1200</option></select></label>
+  <label>Hour <input id="hour" type="range" min="0" max="23.9" step="0.1"></label><span id="time"></span>
+  <label>Month <select id="month"></select></label>
+  <select id="weather"></select>
+  <select id="clock"><option>none</option><option>stardew</option><option>digital</option><option>analog</option></select>
+  <span id="events"></span>
+</div>
+<script type="module">
+import {Engine} from '../pixel-life@garfieldttt.github.io/engine/scene.js';
+import {WEATHER_TYPES} from '../pixel-life@garfieldttt.github.io/engine/weather.js';
+
+const W = 853, H = 480;
+const c = document.getElementById('c');
+c.width = W;
+c.height = H;
+const ctx = c.getContext('2d');
+const img = ctx.createImageData(W, H);
+const e = new Engine(W, H, {motif: 'village'});
+e.timeOffset = true;
+const $ = id => document.getElementById(id);
+for (const w of WEATHER_TYPES)
+    $('weather').add(new Option(w, w));
+for (let m = 0; m < 12; m++)
+    $('month').add(new Option(m + 1, m));
+$('month').value = new Date().getMonth();
+const setDate = () => {
+    const d = new Date(e.simTime);
+    d.setMonth(+$('month').value);
+    const h = +$('hour').value;
+    d.setHours(Math.floor(h), Math.round((h % 1) * 60));
+    e.setTime(d.getTime());
+};
+$('hour').value = new Date().getHours();
+$('hour').oninput = setDate;
+$('month').onchange = () => { setDate(); e.setMotif(e.motif.name); };
+$('motif').onchange = ev => e.setMotif(ev.target.value);
+$('speed').onchange = ev => (e.opts.speed = +ev.target.value);
+$('weather').onchange = ev => e.weather.force(ev.target.value);
+$('clock').onchange = ev => (e.opts.clock = ev.target.value);
+const EVENTS = {village: ['fireworks', 'musician', 'kids', 'crows', 'festival'], city: ['kids', 'chase', 'ambulance', 'fire', 'icecream', 'fireworks', 'outage', 'marathon', 'ducks', 'balloon', 'musician', 'catcross', 'tourists', 'wedding'],
+    country: ['train', 'tractor', 'hikers', 'kite', 'deer', 'rabbit', 'fox', 'fireworks'],
+    space: ['cruiser', 'patrol', 'dogfight', 'freighter', 'jump', 'arrive', 'shuttle', 'comet', 'asteroids', 'probe'],
+    underwater: ['sub', 'merfolk', 'diver', 'school', 'turtle', 'shark', 'manta', 'whale', 'jelly', 'boat', 'crab']};
+const renderEvents = () => {
+    $('events').innerHTML = '';
+    for (const name of EVENTS[e.motif.name] || []) {
+        const b = document.createElement('button');
+        b.textContent = name;
+        b.onclick = () => e.motif.trigger(name, e.env, e);
+        $('events').append(b);
+    }
+    for (const f of ['ufo', 'balloon', 'plane', 'sleigh']) {
+        const b = document.createElement('button');
+        b.textContent = 'sky:' + f;
+        b.onclick = () => { e.sky.flyTimer = 0; e.sky._spawnFlyer({...e.env, dark: f === 'ufo' || f === 'sleigh' ? 1 : 0, holidays: {...e.env.holidays, christmasEve: f === 'sleigh'}}); };
+        $('events').append(b);
+    }
+};
+renderEvents();
+let shown = '';
+let last = performance.now();
+function frame(now) {
+    const real = (now - last) / 1000;
+    last = now;
+    e.tick(real);
+    img.data.set(e.render());
+    ctx.putImageData(img, 0, 0);
+    if (shown !== e.motif.name) {
+        shown = e.motif.name;
+        renderEvents();
+    }
+    $('time').textContent = new Date(e.simTime).toLocaleString() + ' ' + e.weather.type;
+    requestAnimationFrame(frame);
+}
+setDate();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

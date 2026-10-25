@@ -1,0 +1,5 @@
+gschemas.compiled
+dist/
+node_modules/
+*.png
+!screenshots/*.png
