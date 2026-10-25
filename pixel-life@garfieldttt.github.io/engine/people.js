@@ -441,8 +441,7 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
     const f = personFigure(p, frame, face);
     const flip = dir < 0;
     const bob = moving && (frame === 1 || frame === 3) ? 1 : 0;
-    // soft shadow
-    g.blend(x + 1, y - 1, f.w - 2, 2, 0x1a1028, 0.25);
+    g.footShadow(x + f.w / 2, y, f.w - 4, 0.3);
     drawFigure(g, f, x, y - bob, flip);
     const top = y - bob - f.h;
     if (p.umbrella) {

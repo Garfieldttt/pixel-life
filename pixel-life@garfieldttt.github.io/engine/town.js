@@ -793,13 +793,8 @@ export class Town {
             g.rect(x, y - 11, 8, 2, 0x6a9a6a);
             break;
         case 'bushes':
-            for (let i = 0; i < 3; i++) {
-                const bx = x + i * 9, R = A.leafRamp(env.season === 'autumn' ? 'summer' : env.season);
-                g.disc(bx + 5, y - 6, 7, INK);
-                g.disc(bx + 5, y - 6, 6, R[2]);
-                g.disc(bx + 3, y - 8, 3, R[3]);
-                g.px(bx + 2, y - 9, R[4]);
-            }
+            g.footShadow(x + 14, y, 30, 0.28);
+            A.bush(g, x - 1, y, 30, A.leafRamp(env.season === 'autumn' ? 'summer' : env.season), b.seed);
             break;
         case 'sandbox': {
             const R = A.ramp(0x9a6a40);

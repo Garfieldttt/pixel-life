@@ -123,18 +123,21 @@ export function shingles(g, top, bottom, span, R, seed = 0, tileW = 8, rowH = 5)
         for (let x = x1; x < x2; x++) {
             const tx = (x - x1 + off + 1000 * tileW) % tileW;
             const tile = Math.floor((x - x1 + off) / tileW) + row * 7;
-            const tone = hash(tile, row, seed) % 5;
-            let c = tone === 0 ? R[1] : tone === 4 ? R[3] : R[2];
+            // mostly one tone, a few lighter or darker tiles; every row
+            // lies in the shadow of the row above it, the joints between
+            // tiles stop short of that shadow so rows read as overlapping
+            const tone = hash(tile, row, seed) % 9;
+            let c = tone === 0 ? R[1] : tone === 8 ? R[3] : R[2];
             if (ry === 0)
                 c = R[0];
             else if (ry === 1)
-                c = tone === 4 ? R[4] : R[3];
-            else if (ry === rowH - 1)
                 c = R[1];
-            if (tx === 0)
-                c = R[0];
-            else if (tx === 1 && ry > 0)
-                c = mix(c, R[3], 0.5);
+            else if (ry === rowH - 1)
+                c = tone === 8 ? R[4] : R[3];
+            if (tx === 0 && ry > 1)
+                c = R[1];
+            else if (ry === rowH - 1 && (tx === 0 || tx === tileW - 1))
+                c = R[1]; // rounded tile corners
             g.px(x, y, c);
         }
         g.px(x1 - 1, y, INK);
@@ -284,6 +287,31 @@ export function leafRamp(season) {
     return LEAF[season];
 }
 
+// Leafy bush of overlapping clumps, `w` wide with its foot on `ground`.
+// All outlines go down first so the clumps merge into one silhouette,
+// then shade, mid tone and a lit rim on the top left of each clump.
+export function bush(g, x, ground, w, R, seed = 0) {
+    const n = Math.max(2, Math.round(w / 8)), r = Math.max(4, Math.round(w / n / 2) + 1);
+    const lobes = [];
+    for (let i = 0; i < n; i++)
+        lobes.push([x + r + Math.round(i * (w - 2 * r) / (n - 1)), ground - r - 1, r]);
+    for (let i = 1; i < n; i += 2)
+        lobes.push([lobes[i - 1][0] + Math.round((lobes[i][0] - lobes[i - 1][0]) / 2), ground - r - 3 - hash(i, 3, seed) % 3, r]);
+    for (const [cx, cy, rr] of lobes)
+        g.disc(cx, cy, rr + 1, INK);
+    for (const [cx, cy, rr] of lobes)
+        g.disc(cx, cy, rr, R[1]);
+    for (const [cx, cy, rr] of lobes)
+        g.disc(cx - 1, cy - 1, rr - 2, R[2]);
+    for (const [cx, cy, rr] of lobes) {
+        g.rect(cx - rr + 2, cy - rr + 2, 3, 1, R[3]);
+        g.px(cx - rr + 2, cy - rr + 3, R[3]);
+        g.px(cx - rr + 3, cy - rr + 2, R[4]);
+    }
+    g.rect(x + 1, ground - 1, w - 2, 1, R[0]);
+    return lobes;
+}
+
 // Big round tree: thick trunk with roots, crown of leaf clumps. The
 // seed picks the shape (round, tall, wide or birch) and the leaf colors.
 export function bigTree(g, x, ground, size, season, seed, snow = 0) {
@@ -296,7 +324,7 @@ export function bigTree(g, x, ground, size, season, seed, snow = 0) {
     const th = Math.floor(size * (shape === 'wide' ? 0.7 : birch || shape === 'tall' ? 1.05 : 0.9));
     const tw = Math.max(birch ? 3 : 5, Math.floor(size * (birch ? 0.2 : 0.32)));
     // shadow on the ground
-    g.blend(x - size * 0.9, ground - 2, size * 1.8, 4, 0x1a1028, 0.25);
+    g.footShadow(x, ground, size * 1.8, 0.3);
     // trunk with roots
     g.rect(x - tw / 2 - 1, ground - th, tw + 2, th, INK);
     g.rect(x - tw / 2, ground - th, tw, th, bark[2]);
@@ -395,11 +423,28 @@ export const GRASS = {
     winter: [0xa8b8d0, 0xc8d4e8, 0xe4ecf8, 0xf4f8ff, 0xffffff],
 };
 
+// smooth value noise 0..1 on a grid of `cell` pixels
+function patchNoise(px, py, cell, seed) {
+    const gx = Math.floor(px / cell), gy = Math.floor(py / cell);
+    const fx = px / cell - gx, fy = py / cell - gy;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const v = (i, j) => hash(gx + i, gy + j, seed + 17) / 1000;
+    const a = v(0, 0) + (v(1, 0) - v(0, 0)) * sx, b = v(0, 1) + (v(1, 1) - v(0, 1)) * sx;
+    return a + (b - a) * sy;
+}
+
 export function grass(g, x, y, w, h, season, seed = 0) {
     const R = GRASS[season];
     g.rect(x, y, w, h, R[2]);
     for (let py = y; py < y + h; py++) {
         for (let px = x; px < x + w; px++) {
+            // darker and lighter patches with a dithered edge, wider than
+            // tall because the meadow is seen at a low angle
+            const n = patchNoise(px, py * 2.2, 46, seed) + (hash(px, py, seed + 5) - 500) / 9000;
+            if (n < 0.3 || (n < 0.33 && (px + py) % 2))
+                g.px(px, py, R[1]);
+            else if (n > 0.74 || (n > 0.71 && (px + py) % 2))
+                g.px(px, py, R[3]);
             const v = hash(px, py, seed);
             if (v < 40) {
                 // little grass blade: light tip, dark base

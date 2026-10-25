@@ -355,7 +355,7 @@ export function drawVehicle(g, v, y, env, lightsOn) {
     const frame = v.cur > 1 || v.speed > 1 ? Math.floor(v.x / 4) : 0;
     const f = vehicleFigure(v, frame);
     const flip = v.dir < 0;
-    g.blend(v.x + 2, y - 2, f.w - 4, 3, 0x1a1028, 0.3);
+    g.footShadow(v.x + f.w / 2, y, f.w - 2, 0.35);
     if (v.rider) {
         drawFigure(g, f, v.x, y, flip);
         const pf = personFigure(v.rider, 'sit');

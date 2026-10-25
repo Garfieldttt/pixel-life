@@ -291,6 +291,18 @@ export class Gfx {
         }
     }
 
+    // Contact shadow: a flat stepped ellipse whose middle row is the row the
+    // feet stand on (bottom - 1), so figures stand in it instead of on it.
+    footShadow(cx, bottom, w, a = 0.3) {
+        const half = Math.max(2, Math.round(w / 2)), y = Math.floor(bottom) - 1;
+        cx = Math.floor(cx);
+        const end = Math.max(1, Math.round(half * 0.65));
+        this.blend(cx - end, y - 1, end * 2, 1, 0x1a1028, a * 0.7);
+        this.blend(cx - half, y, half * 2, 1, 0x1a1028, a);
+        this.blend(cx - end, y + 1, end * 2, 1, 0x1a1028, a * 0.7);
+        this.blend(cx - Math.round(half * 0.5), y, Math.round(half * 0.5) * 2, 1, 0x1a1028, a * 0.5);
+    }
+
     // Additive light (lamps, beams). a = strength 0..1.
     add(x, y, w, h, c, a) {
         let x1 = Math.floor(x), y1 = Math.floor(y);

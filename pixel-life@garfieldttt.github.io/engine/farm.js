@@ -228,6 +228,8 @@ export class Farm {
         this.houseDoor = {x: this.house.x + this.house.w / 2 - 9, open: 0};
         // crops in front of the farm buildings
         const fieldW = Math.min(200, Math.floor(W * 0.32));
+        // chickens, dog and farmer stay above this line
+        this.yardFront = G + 13;
         this.field = {x: mx(96, fieldW), w: fieldW, y1: G + 14, y2: this.roadTop - 8, crops: pick(['pumpkin', 'cauliflower', 'corn', 'tomato', 'melon']), seed: randi(0, 1e6)};
         // pasture
         const pw = Math.min(220, Math.floor(W * 0.36));
@@ -237,7 +239,7 @@ export class Farm {
         this.pond = {x: this.flip ? 30 : W - pondW - 30, y: G + 18, w: pondW, h: 40};
         // the mill stands in the middle distance, big enough to read
         this.mill = {x: this.flip ? randi(70, Math.floor(W * 0.3)) : randi(Math.floor(W * 0.6), W - 80), y: Math.round(this.meadowTop + (G - 40 - this.meadowTop) * 0.75), k: 1.8, a: rand(6.28)};
-        const blocked = (x, pad, y) => [this.house, this.barn, this.silo].some(o => x > o.x - pad && x < o.x + o.w + pad && y > G - 100) ||
+        const blocked = (x, pad, y) => [this.house, this.barn, this.silo].some(o => x > o.x - pad && x < o.x + o.w + pad && y > G - 170) ||
             (x > this.pasture.x1 - pad && x < this.pasture.x2 + pad && y > this.pasture.y1 - 30 && y < this.pasture.y2 + 36) ||
             (x > this.field.x - pad && x < this.field.x + this.field.w + pad && y > this.field.y1 - 10) ||
             (x > this.pond.x - pad && x < this.pond.x + this.pond.w + pad && y > this.pond.y - 10 && y < this.pond.y + this.pond.h + 20) ||
@@ -290,7 +292,7 @@ export class Farm {
         this.kite = null;
         this.farmer = null;
         this.owl = this.trees.length ? {tree: this.trees[Math.floor(this.trees.length / 2)], t: 0} : null;
-        this.layerA = this.layerB = null;
+        this.layerA = this.layerM = this.layerN = this.layerB = this.layerC = null;
     }
 
     _animal(kind, [a, b]) {
@@ -307,14 +309,19 @@ export class Farm {
     }
 
     renderStatic(g, env) {
-        if (!this.layerA) {
-            this.layerA = g.layer();
-            this.layerB = g.layer();
-        }
-        this.layerA.fill(0);
-        this.layerB.fill(0);
+        // A ground and far land, M meadow up to the windmill, N meadow in
+        // front of it, B farmyard, C field, pond and trees in front of the
+        // yard; moving things are drawn between them by depth
+        if (!this.layerA)
+            for (const k of ['layerA', 'layerM', 'layerN', 'layerB', 'layerC'])
+                this[k] = g.layer();
+        for (const k of ['layerA', 'layerM', 'layerN', 'layerB', 'layerC'])
+            this[k].fill(0);
         g.into(this.layerA, () => this._drawFar(g, env));
+        g.into(this.layerM, () => this._drawMeadow(g, env, false));
+        g.into(this.layerN, () => this._drawMeadow(g, env, true));
         g.into(this.layerB, () => this._drawFarm(g, env));
+        g.into(this.layerC, () => this._drawFront(g, env));
     }
 
     _snowy(env) {
@@ -330,16 +337,37 @@ export class Farm {
         this.ridges.forEach((r, l) => {
             const base = l === 0 ? mix(0x7a88b8, env.skyBottom, 0.45) : mix(0x6a9a7a, env.skyBottom, 0.3);
             const cap = mix(0xf8faff, env.skyBottom, 0.2);
-            for (let x = 0; x < W; x++) {
-                const i = x / 6, i0 = Math.floor(i), f = i - i0;
+            const lit = highlight(base, 0.12), dark = shadow(base, 0.12), haze = mix(base, env.skyBottom, 0.3);
+            const topAt = x => {
+                const i = Math.max(0, x) / 6, i0 = Math.floor(i), f = i - i0;
                 const v = r.pts[i0] * (1 - f) + (r.pts[i0 + 1] ?? r.pts[i0]) * f;
-                const top = Math.floor(hz - v * r.h);
-                const up = (r.pts[i0 + 1] ?? v) > r.pts[i0];
-                g.rect(x, top, 1, hz - top + 2, up ? highlight(base, 0.1) : shadow(base, 0.12));
-                g.px(x, top, highlight(base, 0.25));
-                const capH = l === 0 ? (snow || env.season !== 'summer' ? 16 : 6) : (snow ? 8 : 0);
-                if (capH && v > 0.5)
-                    g.rect(x, top, 1, Math.floor(capH * (v - 0.35)), up ? cap : mix(cap, base, 0.25));
+                return [Math.floor(hz - v * r.h), v];
+            };
+            const capH = l === 0 ? (snow || env.season !== 'summer' ? 16 : 6) : (snow ? 8 : 0);
+            for (let x = 0; x < W; x++) {
+                const [top, v] = topAt(x);
+                // slope over a few pixels, so faces are broad and not 6px stripes
+                const slope = topAt(x + 12)[0] - topAt(x - 12)[0];
+                const face = slope > 5 ? lit : slope < -5 ? dark : base;
+                const depth = hz - top + 2;
+                for (let y = 0; y < depth; y++) {
+                    // haze grows towards the valley, dithered at the steps
+                    const t = y / depth + ((x + y) % 2) * 0.06;
+                    g.px(x, top + y, t > 0.8 ? haze : t > 0.62 ? mix(face, haze, 0.5) : face);
+                }
+                g.px(x, top, highlight(base, 0.3));
+                if (capH && v > 0.45) {
+                    // ragged snow line, lit and shaded like the rock below
+                    const ch = Math.floor(capH * (v - 0.3)) + (hash(x >> 1, l + 9) % 3) - 1;
+                    for (let y = 0; y < ch; y++)
+                        g.px(x, top + y, slope < -5 ? mix(cap, base, 0.3) : y > ch - 2 ? mix(cap, base, 0.15) : cap);
+                }
+                // the near hills are wooded: little tree tops along the crest
+                if (l === 1 && !snow && hash(x, 77) % 5 === 0) {
+                    const tc = shadow(mix(0x3a7a4a, env.skyBottom, 0.3), 0.05);
+                    g.rect(x - 1, top - 2, 3, 3, tc);
+                    g.px(x, top - 3, tc);
+                }
             }
         });
         const pal = FIELD[this._season(env)];
@@ -381,34 +409,82 @@ export class Farm {
         g.rect(0, this.railY + 1, W, 1, 0x8a8a96);
         // meadow
         A.grass(g, 0, this.meadowTop, W, this.h - this.meadowTop, this._season(env), 3);
+        const season = this._season(env);
+        // the other layers start transparent, so contact shadows of
+        // everything standing in the meadow go onto the grass here
+        for (const t of this.trees)
+            g.footShadow(t.x, t.y, t.pine ? t.s * 1.1 : t.s * 1.8, 0.3);
+        const BIT_SHADOW = {bush: [8, 18], rock: [9, 20], stump: [7, 20], beehive: [7, 18], hay: [14, 26], mushrooms: [4, 12]};
+        for (const b of this.bits) {
+            const sh = BIT_SHADOW[b.kind];
+            const shown = !(b.kind === 'mushrooms' || b.kind === 'hay') || (season === 'summer' || season === 'autumn');
+            if (sh && shown)
+                g.footShadow(b.x + sh[0], b.y, sh[1], 0.28);
+        }
+        const f = this.field;
+        g.footShadow(f.x + Math.floor(f.w * 0.6), f.y1 + 18, 10, 0.3);
+    }
+
+    // the windmill between the trees behind and in front of it, the sails
+    // turn between the two layers
+    _drawMeadow(g, env, front) {
+        if (front) {
+            for (const t of this.trees)
+                if (t.y >= this.mill.y && t.y < this.G - 40)
+                    this._tree(g, t, env);
+            return;
+        }
         for (const b of this.bits)
             if (b.y < this.G - 40)
                 this._bit(g, b, env);
-        // windmill between the trees behind and in front of it
         for (const t of this.trees)
             if (t.y < this.mill.y)
                 this._tree(g, t, env);
         this._windmill(g, env);
-        for (const t of this.trees)
-            if (t.y >= this.mill.y && t.y < this.G - 40)
-                this._tree(g, t, env);
     }
 
+    // tiered fir: each tier lit on the left, in shade on the right and
+    // throwing a dark band onto the tier below; snow sits on the tiers
     _pine(g, x, ground, s, env) {
         const R = A.ramp(mix(0x2f7a4a, env.skyBottom, 0.15));
         const snow = this._snowy(env);
-        g.rect(x - 1, ground - 3, 2, 3, 0x5a3a28);
-        const h = s * 2;
-        for (let i = 0; i < h; i++) {
-            const t = i / h, layer = (t * 3) % 1;
-            const half = Math.floor((0.15 + 0.85 * t) * s * 0.55 * (0.5 + 0.5 * layer)) + 1;
-            const y = ground - 3 - h + i;
-            g.px(x - half - 1, y, INK);
-            g.px(x + half, y, INK);
-            g.rect(x - half, y, half, 1, snow && layer < 0.25 ? 0xf4f8ff : R[3]);
-            g.rect(x, y, half, 1, snow && layer < 0.25 ? 0xdce4f4 : R[1]);
+        const trunkH = Math.max(3, Math.round(s * 0.3));
+        g.rect(x - 2, ground - trunkH, 4, trunkH, INK);
+        g.rect(x - 1, ground - trunkH, 2, trunkH, 0x6a4430);
+        const tiers = s >= 12 ? 4 : 3, h = s * 2;
+        const th = Math.ceil(h / tiers) + 3;
+        for (let k = tiers - 1; k >= 0; k--) {
+            const top = ground - trunkH - h + Math.floor(k * (h - th) / (tiers - 1 || 1)) + 1;
+            const maxHalf = Math.round(s * (0.3 + 0.32 * (k + 1) / tiers));
+            // curved flanks, the bottom edge hangs down in branch tips
+            const halfAt = i => Math.max(1, Math.round(Math.pow((i + 1) / th, 0.75) * maxHalf));
+            for (let i = 0; i < th; i++) {
+                const half = halfAt(i), y = top + i;
+                g.rect(x - half - 1, y, half * 2 + 3, 1, INK);
+                g.rect(x - half, y, half, 1, R[3]);
+                g.rect(x, y, half + 1, 1, R[1]);
+                g.rect(x - Math.floor(half / 3), y, Math.floor(half / 3) + 1, 1, R[2]);
+                if (snow && (k === 0 ? i < th * 0.45 : i === th - 1))
+                    g.rect(x - half, y, half * 2 + 1, 1, i % 2 ? 0xdce4f4 : 0xf4f8ff);
+            }
+            const half = halfAt(th - 1);
+            for (let j = -half; j <= half; j++) {
+                const tip = ((j + half + k) % 4) < 2;
+                if (tip) {
+                    g.px(x + j, top + th, snow ? 0xf4f8ff : j < 0 ? R[3] : R[1]);
+                    g.px(x + j, top + th + 1, INK);
+                } else {
+                    g.px(x + j, top + th, INK);
+                }
+            }
+            // light needles along the lit flank
+            for (let i = 2; i < th - 1; i += 3)
+                g.px(x - halfAt(i) + 1, top + i, R[4]);
+            // this tier shades the one below, just under its branch tips
+            if (k < tiers - 1)
+                g.blend(x - half + 1, top + th + 2, half * 2 - 1, 1, 0x1a1028, 0.3);
         }
-        g.px(x, ground - 4 - h, INK);
+        g.px(x, ground - trunkH - h, INK);
     }
 
     _tree(g, t, env) {
@@ -470,63 +546,139 @@ export class Farm {
             break;
         }
         case 'bush': {
+            // three leaf clumps, shaded from the top left, berries in small
+            // bunches so they read as fruit and not as dots
             const R = A.leafRamp(season === 'autumn' ? 'summer' : season);
-            g.disc(x + 6, y - 6, 8, INK);
-            g.disc(x + 6, y - 6, 7, R[2]);
-            g.disc(x + 4, y - 8, 4, R[3]);
-            g.rect(x + 2, y - 10, 2, 1, R[4]);
-            if (season === 'summer' || season === 'autumn')
-                for (let i = 0; i < 4; i++)
-                    g.rect(x + 2 + (hash(i, b.seed) % 9), y - 9 + (hash(i + 3, b.seed) % 6), 2, 2, season === 'summer' ? 0x5a4ac8 : 0xd83a3a);
+            A.bush(g, x, y, 17, R, b.seed);
+            if (season === 'summer' || season === 'autumn') {
+                const c = season === 'summer' ? A.ramp(0x4a4ab8) : A.ramp(0xd8343a);
+                for (const [bx, by] of [[x + 3, y - 6], [x + 11, y - 4], [x + 8, y - 11]]) {
+                    for (const [dx, dy] of [[0, 0], [2, 1], [1, 2]]) {
+                        g.rect(bx + dx, by + dy, 2, 2, c[1]);
+                        g.px(bx + dx, by + dy, c[3]);
+                    }
+                }
+            }
             break;
         }
         case 'rock': {
-            const R = A.ramp(0x9a9aa8);
-            g.rect(x - 1, y - 8, 14, 9, INK);
-            g.rect(x, y - 7, 12, 7, R[2]);
-            g.rect(x + 1, y - 7, 8, 2, R[3]);
-            g.rect(x + 2, y - 7, 3, 1, R[4]);
-            g.rect(x, y - 2, 12, 2, R[1]);
+            // a boulder: lit top face, cool shadow side, a crack and moss
+            const R = A.ramp(0x8c8ca0), rows = [6, 10, 13, 15, 16, 16, 16, 15, 13];
+            const cx = x + 8, top = y - rows.length;
+            rows.forEach((wd, i) => {
+                const lx = cx - Math.floor(wd / 2);
+                g.rect(lx - 1, top + i, wd + 2, 1, INK);
+                g.rect(lx, top + i, wd, 1, R[2]);
+                g.rect(lx + wd - Math.ceil(wd / 3), top + i, Math.ceil(wd / 3), 1, R[1]);
+                if (i < 4)
+                    g.rect(lx + 1, top + i, Math.floor(wd / 2), 1, R[3]);
+            });
+            g.rect(cx - 2, top - 1, 6, 1, INK);
+            g.px(cx - 3, top + 1, R[4]);
+            g.px(cx - 2, top + 1, R[4]);
+            g.line(cx + 2, top + 2, cx + 4, top + 6, R[0]);
+            g.rect(cx - 7, y - 2, 14, 1, R[1]);
             if (season === 'winter')
-                g.rect(x + 1, y - 8, 10, 2, 0xf4f8ff);
+                for (let i = 0; i < 3; i++)
+                    g.rect(cx - Math.floor(rows[i] / 2) + 1, top + i, rows[i] - 2, 1, i ? 0xdce4f4 : 0xf4f8ff);
+            else if (b.seed % 2) {
+                const M = A.leafRamp(season);
+                g.rect(cx - 4, top + 1, 5, 1, M[2]);
+                g.rect(cx - 5, top + 2, 3, 1, M[1]);
+                g.px(cx - 3, top + 1, M[3]);
+            }
+            // a pebble next to it
+            g.rect(cx + 9, y - 3, 5, 3, INK);
+            g.rect(cx + 10, y - 3, 3, 2, R[2]);
+            g.px(cx + 10, y - 3, R[3]);
             break;
         }
         case 'stump': {
-            const R = A.ramp(0x8a5a38);
-            g.rect(x - 1, y - 8, 14, 9, INK);
-            g.rect(x, y - 7, 12, 7, R[2]);
-            g.rect(x, y - 7, 12, 2, 0xd8b080);
-            g.rect(x + 4, y - 7, 4, 1, 0xa87850);
-            g.rect(x, y - 3, 2, 3, R[1]);
+            // cut log: bark sides, the cut face with growth rings, roots
+            const B = A.ramp(0x7a4a30), W = A.ramp(0xd8a868), cx = x + 7;
+            g.rect(cx - 7, y - 10, 15, 10, INK);
+            g.rect(cx - 6, y - 8, 13, 8, B[2]);
+            g.rect(cx - 6, y - 8, 2, 8, B[3]);
+            g.rect(cx + 4, y - 8, 3, 8, B[1]);
+            for (let i = 0; i < 3; i++)
+                g.rect(cx - 3 + i * 3, y - 7 + (i % 2) * 2, 1, 4, B[1]);
+            // roots flaring out at the ground
+            g.rect(cx - 10, y - 2, 5, 2, INK);
+            g.rect(cx - 9, y - 2, 4, 1, B[2]);
+            g.rect(cx + 6, y - 3, 5, 3, INK);
+            g.rect(cx + 6, y - 2, 4, 1, B[1]);
+            // cut face
+            g.rect(cx - 6, y - 12, 13, 1, INK);
+            g.rect(cx - 7, y - 11, 15, 3, INK);
+            g.rect(cx - 5, y - 11, 11, 3, W[2]);
+            g.rect(cx - 6, y - 10, 13, 1, W[2]);
+            g.rect(cx - 3, y - 10, 7, 1, W[1]);
+            g.rect(cx - 1, y - 10, 3, 1, W[2]);
+            g.px(cx, y - 10, W[0]);
+            g.rect(cx - 4, y - 11, 4, 1, W[3]);
+            if (season === 'autumn' || season === 'summer') {
+                g.rect(cx + 7, y - 6, 4, 2, INK);
+                g.rect(cx + 7, y - 5, 3, 1, 0xd89048);
+            }
             break;
         }
         case 'mushrooms':
             if (season === 'autumn' || season === 'summer') {
-                g.rect(x, y - 4, 2, 4, 0xf4ece0);
-                g.rect(x - 2, y - 7, 6, 3, INK);
-                g.rect(x - 1, y - 6, 4, 2, 0xd84838);
-                g.px(x, y - 6, 0xf8f8f8);
+                // fly agarics, one big and two small
+                for (const [mx, s] of [[x + 4, 3], [x, 2], [x + 9, 2]]) {
+                    const stem = s + 2;
+                    g.rect(mx - 1, y - stem, 3, stem, INK);
+                    g.rect(mx, y - stem, 1, stem, 0xf4ece0);
+                    g.rect(mx - s - 1, y - stem - s - 1, s * 2 + 3, s + 1, INK);
+                    g.rect(mx - s, y - stem - s - 2, s * 2 + 1, 1, INK);
+                    g.rect(mx - s, y - stem - s, s * 2 + 1, s, 0xd83838);
+                    g.rect(mx - s + 1, y - stem - s - 1, s * 2 - 1, 1, 0xd83838);
+                    g.rect(mx - s, y - stem - 1, s * 2 + 1, 1, 0x982828);
+                    g.px(mx - s + 1, y - stem - s, 0xffffff);
+                    g.px(mx + 1, y - stem - s + 1, 0xffffff);
+                    if (s > 2)
+                        g.px(mx - 1, y - stem - 2, 0xffffff);
+                }
             }
             break;
         case 'beehive': {
-            const R = A.ramp(0xe8b850);
-            g.rect(x - 1, y - 16, 16, 17, INK);
-            g.rect(x, y - 14, 14, 14, R[2]);
-            for (let i = 0; i < 14; i += 4)
-                g.rect(x, y - 14 + i, 14, 1, R[1]);
-            g.rect(x - 2, y - 17, 18, 3, A.ramp(0x8a5a38)[2]);
-            g.rect(x + 5, y - 4, 4, 2, INK);
+            // straw skep on a little stand: stacked rings, dark entrance
+            const R = A.ramp(0xd8a848), cx = x + 7;
+            const P = A.ramp(0x8a5a38);
+            g.rect(cx - 8, y - 4, 17, 2, INK);
+            g.rect(cx - 7, y - 4, 15, 1, P[2]);
+            g.rect(cx - 6, y - 2, 2, 2, INK);
+            g.rect(cx + 5, y - 2, 2, 2, INK);
+            const rows = [5, 9, 11, 13, 13, 13];
+            for (let i = 0; i < rows.length; i++) {
+                const wd = rows[i], top = y - 4 - (rows.length - i) * 3;
+                g.rect(cx - Math.floor(wd / 2) - 1, top, wd + 2, 3, INK);
+                g.rect(cx - Math.floor(wd / 2), top + (i ? 0 : 1), wd, 2, R[2]);
+                g.rect(cx - Math.floor(wd / 2), top + 2, wd, 1, R[1]);
+                g.rect(cx - Math.floor(wd / 2), top, 2, 2, R[3]);
+            }
+            g.rect(cx - 1, y - 8, 3, 2, INK);
             b.bees = true;
             break;
         }
         case 'hay':
             if (season === 'summer' || season === 'autumn') {
-                const R = A.ramp(0xe8c058);
-                g.rect(x - 1, y - 13, 22, 14, INK);
-                g.rect(x, y - 12, 20, 12, R[2]);
-                g.rect(x, y - 12, 20, 2, R[3]);
-                for (let i = 2; i < 20; i += 4)
-                    g.rect(x + i, y - 10, 1, 9, R[1]);
+                // round bale lying on its side: spiral face and a body
+                const R = A.ramp(0xe0b858), cx = x + 8, cy = y - 8;
+                g.rect(cx, cy - 8, 14, 17, INK);
+                g.rect(cx, cy - 7, 13, 15, R[2]);
+                g.rect(cx, cy - 7, 13, 2, R[3]);
+                g.rect(cx, cy + 5, 13, 3, R[1]);
+                for (let i = 2; i < 13; i += 3)
+                    g.rect(cx + i, cy - 4, 1, 8, R[1]);
+                g.rect(cx + 6, cy - 7, 2, 15, 0xa83a30);
+                g.disc(cx, cy, 8, INK);
+                g.disc(cx, cy, 7, R[3]);
+                g.disc(cx, cy, 5, R[2]);
+                g.disc(cx, cy, 3, R[3]);
+                g.disc(cx, cy, 1, R[1]);
+                g.px(cx - 4, cy - 4, R[4]);
+                g.px(cx + 3, cy + 2, R[1]);
             }
             break;
         }
@@ -545,37 +697,8 @@ export class Farm {
         A.fence(g, p.x1, p.y1, p.x2 - p.x1, fenceR);
         A.sideFence(g, p.x1, p.y1, p.y2 + 8, fenceR);
         A.sideFence(g, p.x2 - 4, p.y1, p.y2 + 8, fenceR);
-        // barn
-        const b = this.barn, red = A.ramp(0xb84a3a);
-        const roofR = snow ? A.ramp(0xe8eef8) : A.ramp(0x5a3a3a);
-        g.rect(b.x - 1, G - b.h, b.w + 2, b.h, INK);
-        A.wallPlanks(g, b.x, G - b.h, b.w, b.h, red, 5);
-        A.slopeRoof(g, b.x, G - b.h - 28, b.w, 28, roofR, 6, 6);
-        // big sliding doors, tall enough for a tractor
-        const dx = b.x + b.w / 2 - 22, bdH = 50;
-        g.rect(dx - 2, G - bdH, 48, bdH, INK);
-        g.rect(dx - 1, G - bdH + 1, 46, bdH - 1, 0xf4ece0);
-        g.rect(dx + 1, G - bdH + 3, 42, bdH - 3, red[1]);
-        for (const [x0, y0, x1, y1] of [[dx + 1, G - bdH + 3, dx + 21, G - 1], [dx + 21, G - bdH + 3, dx + 1, G - 1], [dx + 23, G - bdH + 3, dx + 42, G - 1], [dx + 42, G - bdH + 3, dx + 23, G - 1]]) {
-            g.line(x0, y0, x1, y1, 0xf4ece0);
-            g.line(x0 + 1, y0, x1 + 1, y1, 0xf4ece0);
-        }
-        g.rect(dx + 21, G - bdH + 3, 2, bdH - 3, 0xf4ece0);
-        g.rect(b.x + b.w / 2 - 8, G - b.h + 4, 16, 14, INK);
-        g.rect(b.x + b.w / 2 - 7, G - b.h + 5, 14, 12, 0xf4ece0);
-        g.rect(b.x + b.w / 2 - 5, G - b.h + 7, 10, 8, 0x3a2420);
-        g.rect(b.x + b.w / 2 - 5, G - b.h + 11, 10, 4, 0xe8c058);
-        // silo
-        const s = this.silo, sR = A.ramp(0xb8c0c8);
-        g.rect(s.x - 1, G - s.h, s.w + 2, s.h, INK);
-        g.rect(s.x, G - s.h, s.w, s.h, sR[2]);
-        g.rect(s.x, G - s.h, 4, s.h, sR[3]);
-        g.rect(s.x + s.w - 4, G - s.h, 4, s.h, sR[1]);
-        for (let y = G - s.h + 6; y < G; y += 8)
-            g.rect(s.x, y, s.w, 1, sR[1]);
-        g.disc(s.x + s.w / 2, G - s.h, s.w / 2 + 1, INK);
-        g.disc(s.x + s.w / 2, G - s.h, s.w / 2, snow ? 0xf4f8ff : 0x8a3a30);
-        g.rect(s.x + 4, G - s.h - 6, 4, 3, snow ? 0xffffff : 0xb85a4a);
+        this._barn(g, env);
+        this._silo(g, env);
         // farmhouse
         const H = this.house, top = G - H.wallH;
         const wallR = A.ramp(0xd8aa68), roofH = snow ? A.ramp(0xe8eef8) : A.ramp(0x3a7a8a);
@@ -584,6 +707,16 @@ export class Farm {
         A.slopeRoof(g, H.x, top - H.roofH, H.w, H.roofH, roofH, 12, 6);
         g.rect(H.x - 1, top, H.w + 2, H.wallH, INK);
         A.wallSiding(g, H.x, top, H.w, H.wallH, wallR, 3);
+        // the eaves shade the top of the wall, corner boards, stone footing
+        g.blend(H.x, top, H.w, 4, 0x1a1028, 0.3);
+        g.blend(H.x, top + 4, H.w, 2, 0x1a1028, 0.12);
+        for (const cx of [H.x, H.x + H.w - 4]) {
+            g.rect(cx, top, 4, H.wallH, 0xf0e4cc);
+            g.rect(cx + 3, top, 1, H.wallH, 0xc8b490);
+            g.rect(cx, top, 4, 4, 0xb8a888);
+        }
+        g.rect(H.x - 2, G - 7, H.w + 4, 7, INK);
+        A.wallStone(g, H.x - 1, G - 6, H.w + 2, 6, A.ramp(0xa09888), 4);
         // dormer with the bedroom window
         const dw = this.wins[2];
         g.rect(dw.x - 6, dw.y - 10, dw.w + 12, dw.h + 13, INK);
@@ -616,10 +749,7 @@ export class Farm {
         g.rect(mbx - 4, G - 18, 10, 7, INK);
         g.rect(mbx - 3, G - 17, 8, 5, 0x4c7cd0);
         g.rect(mbx + 4, G - 20, 1, 4, 0xd84848);
-        const sbx = H.x - 2;
-        g.rect(sbx - 1, G - 14 + 10, 22, 14, INK);
-        g.rect(sbx, G - 3, 20, 12, A.ramp(0x9a6a40)[2]);
-        g.rect(sbx, G - 3, 20, 2, A.ramp(0x9a6a40)[3]);
+        this._shippingBin(g, H.x - 4, G + 9);
         // dog house
         const dh = this.houseDoor.x + 40;
         const dr = A.ramp(0xc85a3a);
@@ -630,21 +760,173 @@ export class Farm {
         g.rect(dh + 6, G - 9, 8, 9, INK);
         // path to the road
         A.dirtPath(g, d.x - 2, G + 1, 20, this.roadTop - G - 1, season, 21);
-        this._field(g, env);
+        // the pond lies flat, nothing from the yard walks over it
+        this._pond(g, env);
         // country road
         A.dirtPath(g, 0, this.roadTop, this.w, this.h - this.roadTop, season, 31);
         g.rect(0, this.roadTop, this.w, 1, A.GRASS[season][1]);
         if (this.wetLevel)
             for (let i = 0; i < this.w / 60; i++)
                 g.blend(hash(i, 11) * this.w / 1000, this.roadTop + 4 + hash(i, 13) % 8, 14, 3, env.skyBottom, 0.35);
-        // pond
-        this._pond(g, env);
         for (const bb of this.bits)
-            if (bb.y >= this.pasture.y1)
+            if (bb.y >= this.pasture.y1 && bb.y < this.yardFront)
                 this._bit(g, bb, env);
         for (const t of this.trees)
-            if (t.y >= this.pasture.y1)
+            if (t.y >= this.pasture.y1 && t.y < this.yardFront)
                 this._tree(g, t, env);
+    }
+
+    // everything standing in front of the farmyard walkers and the ducks
+    _drawFront(g, env) {
+        this._field(g, env);
+        for (const bb of this.bits)
+            if (bb.y >= this.yardFront)
+                this._bit(g, bb, env);
+        for (const t of this.trees)
+            if (t.y >= this.yardFront)
+                this._tree(g, t, env);
+    }
+
+    // red barn seen from the gable end: gambrel roof with white trim, a
+    // hayloft door with hay, X-braced doors and a stone footing
+    _barn(g, env) {
+        const G = this.G, b = this.barn, red = A.ramp(0xb84a3a), snow = this._snowy(env);
+        const roofR = snow ? A.ramp(0xe8eef8) : A.ramp(0x5a4a5a), trim = 0xf4ece0;
+        const eave = G - b.h, cx = b.x + b.w / 2, hw = b.w / 2;
+        const knee = 22, peak = 40;
+        // gable profile: half width per row above the eave
+        const halfAt = up => up <= knee ? hw - Math.round(up / knee * 13) : Math.round((hw - 13) * (1 - (up - knee) / (peak - knee)) ** 0.8);
+        const plank = (x, y) => {
+            const k = ((x - b.x) % 6 + 6) % 6;
+            g.px(x, y, k === 0 ? red[0] : k === 1 ? red[3] : k === 5 ? red[1] : red[2]);
+        };
+        g.rect(b.x - 1, eave, b.w + 2, b.h, INK);
+        A.wallPlanks(g, b.x, eave, b.w, b.h, red, 5);
+        for (let up = 1; up <= peak; up++) {
+            const h = halfAt(up), y = eave - up;
+            for (let x = Math.round(cx - h); x < Math.round(cx + h); x++)
+                plank(x, y);
+        }
+        // roof edge: a thick band along the profile, white trim inside it
+        for (let up = 0; up <= peak + 3; up++) {
+            const h = halfAt(Math.min(up, peak)) + (up > peak ? -(up - peak) * 3 : 0), y = eave - up;
+            if (h < 0)
+                continue;
+            for (const side of [-1, 1]) {
+                const edge = Math.round(cx + side * h);
+                const out = side < 0 ? edge - 7 : edge;
+                g.rect(out - 1, y, 9, 1, INK);
+                g.rect(out, y, 7, 1, (up % 4 === 0) ? roofR[1] : side < 0 ? roofR[3] : roofR[2]);
+                g.rect(side < 0 ? edge : edge - 2, y, 2, 1, trim);
+            }
+        }
+        g.rect(Math.round(cx - 4), eave - peak - 4, 9, 2, INK);
+        // white corner boards and eave shadow
+        for (const x of [b.x, b.x + b.w - 3]) {
+            g.rect(x, eave, 3, b.h, trim);
+            g.rect(x + 2, eave, 1, b.h, 0xc8bca8);
+        }
+        // hayloft door with hay and the hoist beam
+        const lw = 22, lh = 18, lx = Math.round(cx - lw / 2), ly = eave - 30;
+        g.rect(lx - 2, ly - 2, lw + 4, lh + 4, INK);
+        g.rect(lx - 1, ly - 1, lw + 2, lh + 2, trim);
+        g.rect(lx, ly, lw, lh, 0x3a2420);
+        g.rect(lx, ly + lh - 8, lw, 8, 0xe0b850);
+        for (let i = 0; i < lw; i += 2)
+            g.rect(lx + i, ly + lh - 10 + (i * 7) % 3, 1, 3, 0xf0d070);
+        g.rect(lx, ly + lh - 8, lw, 1, 0xa88030);
+        g.rect(lx + lw / 2 - 1, ly, 2, lh, trim);
+        g.rect(lx, ly + lh - 9, lw / 2 - 1, 1, 0xf0d070);
+        g.rect(Math.round(cx - 1), ly - 9, 3, 7, INK);
+        g.rect(Math.round(cx), ly - 8, 1, 5, 0x8a5a38);
+        // big sliding doors, tall enough for a tractor
+        const dx = Math.round(cx - 22), bdH = 50;
+        g.rect(dx - 2, G - bdH, 48, bdH, INK);
+        g.rect(dx - 1, G - bdH + 1, 46, bdH - 1, trim);
+        g.rect(dx + 1, G - bdH + 3, 42, bdH - 3, red[1]);
+        for (let x = dx + 1; x < dx + 43; x += 5)
+            g.rect(x, G - bdH + 3, 1, bdH - 3, red[0]);
+        for (const [x0, y0, x1, y1] of [[dx + 1, G - bdH + 3, dx + 21, G - 1], [dx + 21, G - bdH + 3, dx + 1, G - 1], [dx + 23, G - bdH + 3, dx + 42, G - 1], [dx + 42, G - bdH + 3, dx + 23, G - 1]]) {
+            g.line(x0, y0, x1, y1, trim);
+            g.line(x0 + 1, y0, x1 + 1, y1, trim);
+        }
+        g.rect(dx + 21, G - bdH + 3, 2, bdH - 3, trim);
+        g.rect(dx - 4, G - bdH - 3, 52, 2, INK);
+        g.rect(dx - 3, G - bdH - 3, 50, 1, 0x8a8a96);
+        // lantern next to the door
+        const lnx = dx + 52;
+        g.rect(lnx, G - 40, 6, 8, INK);
+        g.rect(lnx + 1, G - 39, 4, 6, 0x8a7a5a);
+        g.rect(lnx + 2, G - 42, 2, 2, INK);
+        this.barnLamp = {x: lnx + 1, y: G - 39};
+        // stone footing
+        g.rect(b.x - 2, G - 7, b.w + 4, 7, INK);
+        A.wallStone(g, b.x - 1, G - 6, b.w + 2, 6, A.ramp(0xa09888), 6);
+        g.rect(dx - 1, G - 6, 46, 6, 0x8a7a6a);
+        if (snow)
+            g.rect(Math.round(cx - 5), eave - peak - 3, 11, 2, 0xf4f8ff);
+    }
+
+    // metal silo on a stone base: rounded shading, riveted rings, a
+    // ribbed dome and a ladder on the side
+    _silo(g, env) {
+        const G = this.G, s = this.silo, snow = this._snowy(env);
+        const M = A.ramp(0xa8b4c0), top = G - s.h;
+        g.rect(s.x - 1, top, s.w + 2, s.h, INK);
+        for (let i = 0; i < s.w; i++) {
+            const t = i / (s.w - 1);
+            const c = t < 0.12 ? M[2] : t < 0.4 ? M[3] : t < 0.5 ? M[4] : t < 0.75 ? M[2] : t < 0.92 ? M[1] : M[0];
+            g.rect(s.x + i, top, 1, s.h, c);
+        }
+        for (let y = top + 10; y < G - 14; y += 12) {
+            g.rect(s.x, y, s.w, 1, M[0]);
+            g.rect(s.x, y + 1, s.w, 1, M[4]);
+            for (let x = s.x + 2; x < s.x + s.w - 1; x += 4)
+                g.px(x, y - 2, M[0]);
+        }
+        // stone base
+        g.rect(s.x - 3, G - 15, s.w + 6, 15, INK);
+        A.wallStone(g, s.x - 2, G - 14, s.w + 4, 14, A.ramp(0xa09888), 9);
+        // dome
+        const dh = 14, dr = s.w / 2 + 2, dcx = s.x + s.w / 2 - 0.5;
+        const roof = snow ? A.ramp(0xe8eef8) : A.ramp(0xa04838);
+        for (let dy = 0; dy < dh; dy++) {
+            const half = Math.round(Math.sqrt(1 - ((dh - dy) / dh) ** 2) * dr);
+            const y = top - dh + dy;
+            g.rect(Math.round(dcx - half) - 1, y, half * 2 + 3, 1, INK);
+            for (let x = Math.round(dcx - half); x <= Math.round(dcx + half); x++) {
+                const u = (x - dcx) / dr;
+                const rib = Math.abs((Math.round(u * 4 * 10) % 10)) === 0;
+                g.px(x, y, rib ? roof[1] : u < -0.3 ? roof[3] : u < 0.35 ? roof[2] : roof[1]);
+            }
+        }
+        g.rect(s.x - 3, top - 1, s.w + 6, 2, INK);
+        g.rect(s.x - 2, top - 1, s.w + 4, 1, roof[1]);
+        g.rect(Math.round(dcx) - 3, top - dh - 4, 7, 4, INK);
+        g.rect(Math.round(dcx) - 2, top - dh - 3, 5, 2, M[3]);
+        // ladder on the shaded side
+        const lx = s.x + s.w - 7;
+        g.rect(lx, top + 2, 1, s.h - 16, INK);
+        g.rect(lx + 4, top + 2, 1, s.h - 16, INK);
+        for (let y = top + 4; y < G - 15; y += 4)
+            g.rect(lx, y, 5, 1, INK);
+    }
+
+    _shippingBin(g, x, bottom) {
+        const R = A.ramp(0x9a6a40), y = bottom - 14;
+        g.rect(x - 1, y, 24, 15, INK);
+        g.rect(x, y + 4, 22, 10, R[2]);
+        for (let py = y + 7; py < bottom; py += 3)
+            g.rect(x, py, 22, 1, R[1]);
+        // lid, slightly wider, with a lit edge
+        g.rect(x - 2, y - 1, 26, 5, INK);
+        g.rect(x - 1, y, 24, 3, R[3]);
+        g.rect(x - 1, y, 24, 1, R[4]);
+        // iron corners
+        for (const cx of [x, x + 19])
+            g.rect(cx, y + 4, 3, 10, 0x6a6a78);
+        g.rect(x + 9, y + 3, 4, 3, 0x6a6a78);
+        g.px(x + 10, y + 4, 0xc8c8d8);
     }
 
     _pond(g, env) {
@@ -683,6 +965,10 @@ export class Farm {
         const CROPS = {spring: ['parsnip', 'strawberry', 'cauliflower', 'parsnip'], summer: ['tomato', 'melon', 'sunflower', 'corn', 'wheat'],
             autumn: ['pumpkin', 'corn', 'sunflower', 'pumpkin', 'wheat'], winter: []};
         const list = CROPS[env.season];
+        if (season === 'winter' && this._snowy(env)) {
+            this._snowField(g, f);
+            return this._scarecrow(g, f, env);
+        }
         let rowI = 0;
         for (let ty = f.y1; ty < f.y2 - 4; ty += 12, rowI++) {
             const crop = list.length ? list[(rowI + f.seed) % list.length] : '';
@@ -690,14 +976,22 @@ export class Farm {
                 g.rect(tx + 1, ty + 1, 12, 10, soil[2]);
                 g.rect(tx + 1, ty + 1, 12, 1, soil[3]);
                 g.rect(tx + 1, ty + 10, 12, 1, soil[0]);
-                if (season === 'winter')
+                if (season === 'winter') {
+                    this._winterTile(g, tx, ty, hash(tx, ty + f.seed));
                     continue;
+                }
                 this._crop(g, tx + 7, ty + 9, crop, env.season, hash(tx, ty + f.seed));
             }
         }
-        if (season === 'winter')
-            g.blend(f.x, f.y1, f.w, f.y2 - f.y1, 0xf4f8ff, 0.7);
-        // scarecrow
+        this._scarecrow(g, f, env);
+        // sprinkler
+        const spx = f.x + Math.floor(f.w * 0.25), spy = f.y1 + 30;
+        g.rect(spx - 2, spy - 4, 5, 4, INK);
+        g.rect(spx - 1, spy - 3, 3, 2, 0xa8a8b8);
+        this.sprinkler = {x: spx, y: spy - 4};
+    }
+
+    _scarecrow(g, f, env) {
         const sx = f.x + Math.floor(f.w * 0.6), sy = f.y1 + 18;
         g.rect(sx - 1, sy - 30, 3, 30, INK);
         g.rect(sx, sy - 30, 1, 30, 0x8a5a38);
@@ -715,11 +1009,91 @@ export class Farm {
         g.rect(sx - 7, sy - 36, 15, 1, 0x9a7a40);
         g.rect(sx - 4, sy - 41, 9, 4, INK);
         g.rect(sx - 3, sy - 40, 7, 3, 0x9a7a40);
-        // sprinkler
-        const spx = f.x + Math.floor(f.w * 0.25), spy = f.y1 + 30;
-        g.rect(spx - 2, spy - 4, 5, 4, INK);
-        g.rect(spx - 1, spy - 3, 3, 2, 0xa8a8b8);
-        this.sprinkler = {x: spx, y: spy - 4};
+        if (this._snowy(env))
+            g.rect(sx - 7, sy - 38, 15, 1, 0xf4f8ff);
+    }
+
+    // bare soil in winter: frost and a few stubble stalks
+    _winterTile(g, tx, ty, h) {
+        for (let i = 0; i < 4; i++)
+            g.px(tx + 2 + (h * (i + 3)) % 10, ty + 3 + (h >> i) % 6, 0xd8e0ec);
+        if (h % 3 === 0)
+            for (let i = 0; i < 3; i++)
+                g.rect(tx + 4 + i * 3, ty + 5 - (i % 2), 1, 4, 0xa88a50);
+    }
+
+    // snowed-in field: the rows stay visible as long soft ridges, lit on
+    // top and blue in the furrows, with soil and stubble peeking out
+    _snowField(g, f) {
+        g.rect(f.x, f.y1, f.w, f.y2 - f.y1, 0xe8eef8);
+        for (let ty = f.y1; ty < f.y2 - 4; ty += 12) {
+            for (let x = f.x; x < f.x + f.w; x++) {
+                const h = hash(x, ty + f.seed), clump = hash(x >> 2, ty + f.seed + 7);
+                g.px(x, ty + 1, 0xf4f8ff);
+                g.px(x, ty + 2, 0xffffff);
+                g.px(x, ty + 3, h < 600 ? 0xffffff : 0xf4f8ff);
+                g.px(x, ty + 7, 0xdce4f0);
+                g.px(x, ty + 8, 0xd0dcec);
+                g.px(x, ty + 9, 0xbccae0);
+                g.px(x, ty + 10, clump < 90 ? 0x6a4a3a : 0xa8b8d4);
+                g.px(x, ty + 11, clump < 90 ? 0x8a6a50 : 0xc8d4e8);
+                if (h > 990) {
+                    g.rect(x, ty, 1, 4, 0x9a7a48);
+                    g.px(x + 1, ty + 1, 0x9a7a48);
+                }
+            }
+        }
+    }
+
+    _scarecrow(g, f, env) {
+        const sx = f.x + Math.floor(f.w * 0.6), sy = f.y1 + 18;
+        g.rect(sx - 1, sy - 30, 3, 30, INK);
+        g.rect(sx, sy - 30, 1, 30, 0x8a5a38);
+        g.rect(sx - 12, sy - 24, 25, 3, INK);
+        g.rect(sx - 11, sy - 23, 23, 1, 0x8a5a38);
+        g.rect(sx - 6, sy - 25, 13, 12, INK);
+        g.rect(sx - 5, sy - 24, 11, 10, 0x4c7cd0);
+        g.rect(sx - 2, sy - 24, 4, 10, 0xd84848);
+        g.rect(sx - 5, sy - 34, 11, 10, INK);
+        g.rect(sx - 4, sy - 33, 9, 8, 0xe8c070);
+        g.px(sx - 2, sy - 30, INK);
+        g.px(sx + 2, sy - 30, INK);
+        g.rect(sx - 1, sy - 28, 3, 1, 0x8a4a2a);
+        g.rect(sx - 8, sy - 37, 17, 3, INK);
+        g.rect(sx - 7, sy - 36, 15, 1, 0x9a7a40);
+        g.rect(sx - 4, sy - 41, 9, 4, INK);
+        g.rect(sx - 3, sy - 40, 7, 3, 0x9a7a40);
+        if (this._snowy(env))
+            g.rect(sx - 7, sy - 38, 15, 1, 0xf4f8ff);
+    }
+
+    // bare soil in winter: frost and a few stubble stalks
+    _winterTile(g, tx, ty, h) {
+        for (let i = 0; i < 4; i++)
+            g.px(tx + 2 + (h * (i + 3)) % 10, ty + 3 + (h >> i) % 6, 0xd8e0ec);
+        if (h % 3 === 0)
+            for (let i = 0; i < 3; i++)
+                g.rect(tx + 4 + i * 3, ty + 5 - (i % 2), 1, 4, 0xa88a50);
+    }
+
+    // snowed-in field: the rows stay visible as long soft ridges, lit on
+    // top and blue in the furrows, with soil and stubble peeking out
+    _snowField(g, f) {
+        g.rect(f.x, f.y1, f.w, f.y2 - f.y1, 0xe8eef8);
+        for (let ty = f.y1; ty < f.y2 - 4; ty += 12) {
+            for (let x = f.x; x < f.x + f.w; x++) {
+                const h = hash(x, ty + f.seed);
+                g.px(x, ty + 2, h < 850 ? 0xffffff : 0xe8eef8);
+                g.px(x, ty + 3, h < 300 ? 0xffffff : 0xf0f4fc);
+                g.px(x, ty + 9, 0xc8d4e8);
+                g.px(x, ty + 10, h < 120 ? 0x6a4a3a : 0xb0c0dc);
+                g.px(x, ty + 11, 0xc8d4e8);
+                if (h > 985) {
+                    g.rect(x, ty + 1, 1, 4, 0x9a7a48);
+                    g.px(x + 1, ty + 2, 0x9a7a48);
+                }
+            }
+        }
     }
 
     _crop(g, x, y, kind, season, h) {
@@ -865,7 +1239,7 @@ export class Farm {
             const dir = chance(0.5) ? 1 : -1;
             for (let i = 0; i < n; i++)
                 this.wild.push({kind: name, a: name === 'deer' ? 0xa86a3a : name === 'fox' ? 0xe0782a : pick([0xb08a6a, 0x8a7a6a, 0xe8e0d8]),
-                    x: dir > 0 ? -30 - i * 26 : this.w + 30 + i * 26, y: this.meadowTop + rand(10, 30), dir, t: rand(5),
+                    x: dir > 0 ? -30 - i * 26 : this.w + 30 + i * 26, y: this.meadowTop + rand(2, 6), dir, t: rand(5),
                     speed: name === 'fox' ? 14 : name === 'deer' ? 10 : 16, stop: 0});
             break;
         }
@@ -1104,10 +1478,12 @@ export class Farm {
         for (const w of this.wild) {
             const pose = w.stop > 0 ? 'walk2' : Math.floor(w.t * 5) % 2 ? 'walk1' : 'walk2';
             const f = animalFigure(w.kind, w.a, 0, pose);
+            g.footShadow(w.x + f.w / 2, w.y, f.w - 4, 0.25);
             drawFigure(g, f, w.x, w.y, w.dir < 0);
             if (env.dark > 0.6 && w.kind !== 'rabbit')
                 g.pxE(w.dir > 0 ? w.x + f.w - 6 : w.x + 5, w.y - f.h + 4, 0xd0ff90);
         }
+        g.compose(this.layerM, 0, this.h, true);
         // windmill sails
         if (this.mill.hub) {
             const [hx, hy] = this.mill.hub;
@@ -1128,6 +1504,7 @@ export class Farm {
             g.rect(hx - 2, hy - 2, 5, 5, INK);
             g.rect(hx - 1, hy - 1, 3, 3, 0x8a5a38);
         }
+        g.compose(this.layerN, 0, this.h, true);
         g.compose(this.layerB, 0, this.h, true);
         // pond life
         const pd = this.pond;
@@ -1155,8 +1532,7 @@ export class Farm {
             if (a.lift > 0)
                 pose = 'walk2';
             const f = animalFigure(a.kind, a.a, a.b, pose);
-            if (a.lift === 0)
-                g.blend(a.x + 3, a.y - 2, f.w - 6, 3, 0x1a1028, 0.25);
+            g.footShadow(a.x + f.w / 2, a.y, (f.w - 6) * (a.lift ? 0.7 : 1), 0.3);
             drawFigure(g, f, a.x, a.y - a.lift, a.dir < 0);
             if (a.state === 'lie' && env.dark > 0.6 && Math.floor(t + a.x) % 6 < 3)
                 g.text('Z', a.x + (a.dir < 0 ? -2 : f.w), a.y - f.h - 4 - Math.floor(t % 2) * 2, 0xe0e8ff, true);
@@ -1173,14 +1549,20 @@ export class Farm {
             const d = this.houseDoor;
             g.rectE(d.x - 7, this.G - 39, 2, 2, 0xffd890);
             g.glow(d.x - 6, this.G - 38, 22, 0xffc870, 0.35);
+            const bl = this.barnLamp;
+            g.rectE(bl.x, bl.y, 4, 6, 0xffd890);
+            g.glow(bl.x + 2, bl.y + 3, 20, 0xffc870, 0.3);
         }
         // chickens, dog, cat, farmer
         if (env.dark < 0.55) {
             for (const c of this.chickens) {
                 const f = animalFigure('chicken', c.a, 0, c.state === 'graze' && Math.floor(c.t * 3) % 2 ? 'graze' : 'walk1');
+                g.footShadow(c.x + f.w / 2, c.y, f.w - 2, 0.25);
                 drawFigure(g, f, c.x, c.y, c.dir < 0);
             }
-            drawFigure(g, dogFigure(this.dog, Math.floor(t * 5)), this.dogX, this.G + 4, this.dogDir < 0);
+            const df = dogFigure(this.dog, Math.floor(t * 5));
+            g.footShadow(this.dogX + df.w / 2, this.G + 4, df.w - 2, 0.25);
+            drawFigure(g, df, this.dogX, this.G + 4, this.dogDir < 0);
         } else {
             drawFigure(g, dogFigure(this.dog, 0), this.houseDoor.x + 42, this.G + 2, false);
         }
@@ -1193,6 +1575,7 @@ export class Farm {
                 for (let i = 0; i < 4; i++)
                     g.blend(f.x + 18 + i * 2, f.y - 14 + ((t * 20 + i * 3) % 12), 1, 2, 0x8ac8f8, 0.8);
         }
+        g.compose(this.layerC, 0, this.h, true);
         // sprinkler in the morning
         if (this.sprinkler && env.hour > 6 && env.hour < 7.5 && !this._snowy(env)) {
             const {x, y} = this.sprinkler;

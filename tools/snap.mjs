@@ -39,6 +39,9 @@ function png(bytes, W, H, scale, crop) {
     return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 const e = new Engine(+w, +h, {motif, speed: 1, clock, people: +(process.env.PEOPLE ?? 1), traffic: +(process.env.TRAFFIC ?? 1)});
+// NOFLIP=1 keeps the country farm on the left, for crops of the buildings
+while (process.env.NOFLIP && e.motif.flip)
+    e.motif.layout(e.env);
 // FORCE=kraken:perch,diver triggers motif events at once (in view)
 for (const ev of (process.env.FORCE || '').split(',').filter(Boolean)) {
     const [name, ctx] = ev.split(':');
