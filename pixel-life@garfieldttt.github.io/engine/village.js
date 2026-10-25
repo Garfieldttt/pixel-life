@@ -93,15 +93,36 @@ export class Village extends World {
         // pier with a path from the plaza
         const pierX = clamp(randi(Math.floor(C * 0.55), Math.floor(C * 0.8)), px + pw + 2, C - 4);
         const wt = Math.max(this.waterTop[pierX], this.waterTop[pierX + 1]);
-        for (let y = py + ph; y < wt - 1; y++)
+        // the bend runs along the beach, above the wavy water line everywhere
+        const bx1 = Math.min(px + pw - 2, pierX), bx2 = Math.max(px + pw - 2, pierX) + 2;
+        let dry = Infinity;
+        for (let x = bx1 * TILE - 4; x <= bx2 * TILE + 4; x++)
+            dry = Math.min(dry, this.shore[clamp(x, 0, this.w)]);
+        const bendY = Math.min(wt - 2, Math.floor((dry - 16) / TILE) - 1);
+        for (let y = py + ph; y < bendY; y++)
             ter.rect(px + pw - 2, y, 2, 1, T.PATH);
-        const bendY = wt - 2;
-        ter.rect(Math.min(px + pw - 2, pierX), bendY, Math.abs(pierX - (px + pw - 2)) + 2, 2, T.PATH);
-        ter.rect(pierX, bendY, 2, 2, T.PATH);
-        ter.rect(pierX, wt - 1, 2, 1, T.PATH);
+        ter.rect(bx1, bendY, bx2 - bx1, 2, T.PATH);
+        ter.rect(pierX, bendY, 2, wt - bendY, T.PATH);
         const pierLen = Math.min(waterRows - 1, 4);
         ter.rect(pierX, wt, 2, pierLen, T.DECK);
         this.pier = {x: pierX, y: wt, len: pierLen};
+        // where the way down meets the water the pier reaches up the beach
+        let pierWet = Infinity;
+        for (let x = pierX * TILE - 4; x <= (pierX + 2) * TILE + 4; x++)
+            pierWet = Math.min(pierWet, this.shore[clamp(x, 0, this.w)]);
+        for (let y = bendY + 2; y < wt; y++)
+            if (y * TILE + 15 >= pierWet)
+                ter.rect(pierX, y, 2, 1, T.DECK);
+        // the shoreline is wavy per pixel: no walking on tiles where the
+        // feet (y + 12) or the way to the next tile would be in the water
+        for (let x = 0; x < C; x++) {
+            let wet = Infinity;
+            for (let px = Math.max(0, x * TILE - 4); px <= Math.min(this.w, x * TILE + 20); px++)
+                wet = Math.min(wet, this.shore[px]);
+            for (let y = Math.floor((wet - 16) / TILE); y < this.waterTop[x]; y++)
+                if (y >= 0 && y * TILE + 15 >= wet && ter.get(x, y) !== T.DECK)
+                    this.blocked[y * C + x] = 1;
+        }
         // ---- objects ----
         const used = this._used = new Uint8Array(C * R);
         const mark = (x, y, w, h) => {
@@ -182,12 +203,16 @@ export class Village extends World {
             this.add(ly, g => O.lampPost(g, lx, ly), [lx - 8, ly - 62, 16, 64], [x, mainY - 1, 1, 1]);
             this._lampsAt.push([lx, ly]);
         }
-        // braziers by the pier
+        // braziers on the beach either side of the pier, feet above the
+        // wavy water line
         for (const dx of [-1, 2]) {
-            const tx = pierX + dx, ty = wt - 1;
-            if (ter.get(tx, ty) === T.WATER)
+            const tx = pierX + dx, x = tx * TILE + 8;
+            let sy = Infinity;
+            for (let px = x - 7; px <= x + 7; px++)
+                sy = Math.min(sy, this.shore[clamp(px, 0, this.w)]);
+            const y = Math.floor(sy) - 4, ty = Math.floor(y / TILE);
+            if (![T.GRASS, T.SAND].includes(ter.get(tx, ty)))
                 continue;
-            const x = tx * TILE + 8, y = ty * TILE + 12;
             this.add(y, g => O.brazier(g, x, y), [x - 8, y - 14, 16, 16], [tx, ty, 1, 1]);
             this.fires.push([x, y - 11]);
             mark(tx, ty, 1, 1);
