@@ -238,7 +238,8 @@ export class Town {
         // park in the foreground
         this.parkTrees = [];
         for (let x = randi(10, 60); x < W; x += randi(150, 230))
-            this.parkTrees.push({x, y: this.h - randi(2, 10), size: treeSize(32, 40), seed: randi(0, 1e6)});
+            // on the lawn just behind the path, so walkers pass in front
+            this.parkTrees.push({x, y: this.h - randi(14, 18), size: treeSize(32, 40), seed: randi(0, 1e6)});
         this.parkBits = [];
         for (let x = randi(20, 60); x < W; x += randi(40, 80)) {
             if (!this.parkTrees.some(t => Math.abs(t.x - x) < t.size * 0.5 + 16))
@@ -670,13 +671,6 @@ export class Town {
         const curb = this.roadTop - 3;
         for (const l of this.lamps)
             this._lampPost(g, l.x, curb, env);
-        // traffic light poles (heads are dynamic)
-        for (const px of [this.crossX - 6, this.crossX + 30]) {
-            g.rect(px - 1, curb - 46, 3, 46, INK);
-            g.rect(px, curb - 46, 1, 46, 0x5a5a68);
-            g.rect(px - 3, curb - 60, 7, 15, INK);
-            g.rect(px - 2, curb - 59, 5, 13, 0x2a2a34);
-        }
         // bus stop sign
         const sx = this.busX + 26;
         g.rect(sx, curb - 40, 2, 40, 0x6a6a74);
@@ -1092,11 +1086,21 @@ export class Town {
             d.open = Math.max(0, d.open - real);
         const L = this.light;
         L.t += real;
-        const dur = {green: 20, yellow: 3, red: 12};
+        // cars: green, yellow, red, red and yellow; people walk only in the
+        // middle of the red phase, so the crossing clears before cars go
+        const dur = {green: 20, yellow: 3, red: 13, redyellow: 1.5};
+        const next = {green: 'yellow', yellow: 'red', red: 'redyellow', redyellow: 'green'};
         if (L.t > dur[L.state]) {
             L.t = 0;
-            L.state = L.state === 'green' ? 'yellow' : L.state === 'yellow' ? 'red' : 'green';
+            L.state = next[L.state];
         }
+        // the walk signal comes once the last car (a long bus, say) has
+        // cleared the crossing, and ends well before the cars get green
+        const clear = !this.lanes.some(l => l.cars.some(v => v.x < this.crossX + 30 && v.x + v.len > this.crossX - 4));
+        if (L.state !== 'red' || L.t > 9)
+            L.walk = false;
+        else if (!L.walk && L.t > 1 && L.t < 6 && clear)
+            L.walk = true;
         this._updateCars(real, env);
         this._updatePeople(real, env);
         this._updateBits(real, env);
@@ -1132,9 +1136,11 @@ export class Town {
 
     _meadowPoint() {
         const top = this.parkTop + 20, bottom = this.h - 16, p = this.pond;
+        const trees = [...this.parkTrees, ...this.meadowTrees];
         for (;;) {
             const x = rand(10, this.w - 30), y = rand(top, bottom);
-            if (!p || x < p.x - 20 || x > p.x + p.w + 4 || y < p.y - 4 || y > p.y + p.h + 14)
+            if ((!p || x < p.x - 20 || x > p.x + p.w + 4 || y < p.y - 4 || y > p.y + p.h + 14) &&
+                !trees.some(t => Math.abs(x + 8 - t.x) < t.size * 0.16 + 16 && Math.abs(y - t.y) < 12))
                 return [x, y];
         }
     }
@@ -1173,7 +1179,11 @@ export class Town {
                         [q.x, q.y] = q.seat;
                         q.state = q.rest;
                     } else {
-                        q.x = s.x + rand(-60, 60);
+                        for (let tries = 0; tries < 20; tries++) {
+                            q.x = s.x + rand(-60, 60);
+                            if (!this._crossesPond([q.x, this.parkY], q.seat))
+                                break;
+                        }
                         q.y = this.parkY;
                         q.state = 'walk';
                     }
@@ -1232,13 +1242,16 @@ export class Town {
         this.strollers = this.strollers.filter(q => !q.gone);
     }
 
+    // would a walk from a to b (feet, figure 16 wide) cross the pond or a
+    // tree trunk?
     _crossesPond(a, b) {
-        const p = this.pond;
-        if (!p)
-            return false;
-        for (let i = 0; i <= 20; i++) {
-            const x = a[0] + (b[0] - a[0]) * i / 20, y = a[1] + (b[1] - a[1]) * i / 20;
-            if (x > p.x - 20 && x < p.x + p.w + 4 && y > p.y - 4 && y < p.y + p.h + 14)
+        const p = this.pond, trees = [...this.parkTrees, ...this.meadowTrees];
+        const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 4));
+        for (let i = 0; i <= n; i++) {
+            const x = a[0] + (b[0] - a[0]) * i / n, y = a[1] + (b[1] - a[1]) * i / n;
+            if (p && x > p.x - 20 && x < p.x + p.w + 4 && y > p.y - 4 && y < p.y + p.h + 14)
+                return true;
+            if (trees.some(t => Math.abs(x + 8 - t.x) < t.size * 0.16 + 8 && Math.abs(y - t.y) < 6))
                 return true;
         }
         return false;
@@ -1265,8 +1278,14 @@ export class Town {
             if (q.state === 'walk' && this._step(q, q.seat[0], q.seat[1], real)) {
                 q.state = q.rest;
                 q.dir = q.sitDir;
-            } else if (q.state === 'leave' && this._step(q, q.seat[0] + (q.dir > 0 ? 50 : -50), this.parkY, real)) {
-                q.gone = true;
+            } else if (q.state === 'leave') {
+                if (!q.exit) {
+                    const sides = q.dir > 0 ? [50, -50, 90, -90] : [-50, 50, -90, 90];
+                    const dx = sides.find(d => !this._crossesPond([q.x, q.y], [q.seat[0] + d, this.parkY])) ?? sides[0];
+                    q.exit = [q.seat[0] + dx, this.parkY];
+                }
+                if (this._step(q, q.exit[0], q.exit[1], real))
+                    q.gone = true;
             }
         }
         for (let i = people.length - 1; i >= 0; i--)
@@ -1410,7 +1429,10 @@ export class Town {
                 }
                 const line = lane.dir > 0 ? this.crossX - 4 : this.crossX + 30;
                 const dist = (line - front) * lane.dir;
-                if (stop && !v.siren && v.type !== 'speeder' && dist > -2 && dist < 50 && !(this.light.state === 'yellow' && dist < 10))
+                // the crossing is 34 wide (line to line); nobody drives onto it
+                // without room behind it for the whole car
+                const jam = ahead && (lane.dir > 0 ? ahead.x - (line + 34) : line - 34 - (ahead.x + ahead.len)) < v.len + 8;
+                if (((stop && !(this.light.state === 'yellow' && dist < 10)) || jam) && !v.siren && v.type !== 'speeder' && dist > -2 && dist < 50)
                     target = Math.min(target, Math.max(0, dist - 1) * 2);
                 if (!v.siren && dist > -1 && dist < 40 && this.people.some(p => p.state === 'cross' && Math.abs(p.y - lane.y) < 16))
                     target = 0;
@@ -1450,7 +1472,7 @@ export class Town {
     }
 
     _updatePeople(real, env) {
-        const pedGreen = this.light.state === 'red' && this.light.t < 10;
+        const pedGreen = this._pedWalk();
         for (const p of this.people) {
             p.t += real;
             switch (p.state) {
@@ -1709,6 +1731,7 @@ export class Town {
                 items.push([p.y, 0, p]);
         for (const d of this.ducks)
             items.push([d.y, 2, d]);
+        items.push([this.frontTop + 2, 5, null]);
         for (const c of this.critters)
             items.push([c.y, 3, c]);
         for (const flock of this.pigeons)
@@ -1725,6 +1748,8 @@ export class Town {
                 this._renderDuck(g, o);
             else if (kind === 3)
                 drawFigure(g, catFigure(o.cat, Math.floor(o.t * 8) % 2 ? 'walk1' : 'walk2'), o.x, o.y, false);
+            else if (kind === 5)
+                this._renderPedSignal(g);
             else
                 this._renderPigeon(g, o);
         }
@@ -1779,7 +1804,8 @@ export class Town {
     }
 
     _renderPerson(g, p, env) {
-        drawPerson(g, p, p.x, p.y, p.dir, env);
+        // crossing the street they face the way they walk
+        drawPerson(g, p, p.x, p.y, p.dir, env, p.state === 'cross' ? (p.target > p.y ? 'down' : 'up') : 'side');
         const f = personFigure(p, 0);
         if (p.state === 'chat' && p.chatT > 1.5 && Math.floor(p.chatT * 1.5) % 3 !== 0)
             this._icon(g, p.x + 4, p.y - f.h - 12, p.icon);
@@ -1886,29 +1912,53 @@ export class Town {
         g.px(x + 5 - step, y - 1, 0xf08a20);
     }
 
-    _renderTrafficLights(g, env) {
-        const curb = this.roadTop - 3, st = this.light.state;
-        for (const px of [this.crossX - 6, this.crossX + 30]) {
-            [[0xff3030, 'red'], [0xffc020, 'yellow'], [0x30e060, 'green']].forEach(([c, s], i) => {
-                const ly = curb - 58 + i * 4;
-                if (st === s) {
-                    g.rectE(px - 1, ly, 3, 3, c);
-                    g.glow(px, ly + 1, 7, c, 0.35);
-                } else {
-                    g.rect(px - 1, ly, 3, 3, shadow(c, 0.75));
-                }
-            });
+    _pedWalk() {
+        return !!this.light.walk;
+    }
+
+    // One signal post per side of the street, each on the drivers' right
+    // just before the crossing: the far side for the lane going left, the
+    // near side for the lane going right. Car lights on top, the walk
+    // signal for people below.
+    _renderSignal(g, px, foot) {
+        const st = this.light.state, walk = this._pedWalk();
+        g.rect(px - 1, foot - 46, 3, 46, A.INK);
+        g.rect(px, foot - 46, 1, 46, 0x5a5a68);
+        g.rect(px - 3, foot - 60, 7, 15, A.INK);
+        g.rect(px - 2, foot - 59, 5, 13, 0x2a2a34);
+        [[0xff3030, ['red', 'redyellow']], [0xffc020, ['yellow', 'redyellow']], [0x30e060, ['green']]].forEach(([c, on], i) => {
+            const ly = foot - 58 + i * 4;
+            if (on.includes(st)) {
+                g.rectE(px - 1, ly, 3, 3, c);
+                g.glow(px, ly + 1, 7, c, 0.35);
+            } else {
+                g.rect(px - 1, ly, 3, 3, shadow(c, 0.75));
+            }
+        });
+        // walk signal: standing red figure or walking green figure
+        const hy = foot - 34;
+        g.rect(px + 2, hy - 1, 7, 12, A.INK);
+        g.rect(px + 3, hy, 5, 10, 0x2a2a34);
+        const c = walk ? 0x30e060 : 0xff3030, y0 = walk ? hy + 5 : hy;
+        g.rectE(px + 5, y0, 1, 1, c);
+        g.rectE(px + 4, y0 + 1, 3, 2, c);
+        if (walk) {
+            g.pxE(px + 4, y0 + 3, c);
+            g.pxE(px + 6, y0 + 3, c);
+        } else {
+            g.rectE(px + 5, y0 + 3, 1, 2, c);
         }
-        const px = this.crossX + 12, py = this.frontTop + 2;
-        const walk = st === 'red' && this.light.t < 10;
-        // pedestrian signal on its own post at the front curb
-        const hy = py - 26;
-        g.rect(px, hy, 3, py - hy + 2, A.INK);
-        g.rect(px + 1, hy, 1, py - hy + 1, 0x5a5a68);
-        g.rect(px - 3, hy - 10, 9, 12, A.INK);
-        g.rect(px - 2, hy - 9, 7, 10, 0x2a2a34);
-        g.rectE(px - 1, walk ? hy - 4 : hy - 8, 5, 3, walk ? 0x30e060 : 0xff3030);
-        g.glow(px + 1, walk ? hy - 3 : hy - 7, 5, walk ? 0x30e060 : 0xff3030, 0.25);
+        g.glow(px + 5, y0 + 2, 5, c, 0.25);
+    }
+
+    _renderTrafficLights(g) {
+        this._renderSignal(g, this.crossX + 30, this.roadTop - 3);
+    }
+
+    // the near post is drawn in depth order with the traffic, so cars
+    // pass behind it
+    _renderPedSignal(g) {
+        this._renderSignal(g, this.crossX - 7, this.frontTop + 2);
     }
 
     _renderBalcony(g, bal, env) {
