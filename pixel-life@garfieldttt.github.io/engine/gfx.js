@@ -158,10 +158,77 @@ export class Gfx {
         }
     }
 
-    // The cached lit copy of a layer (after compose(..., true) ran this frame).
+    // The layer as compose(..., true) put it on screen this frame; in full
+    // daylight compose copies the layer itself and keeps no lit copy.
     litBuffer(layer) {
+        if (this.ar === 1 && this.ag === 1 && this.ab === 1)
+            return layer;
         const c = this.litCache && this.litCache.get(layer);
-        return c ? c.buf : null;
+        return c && c.key === this._luts().lutKey + '|' + this.layerVersion ? c.buf : null;
+    }
+
+    // Draw one object through the empty scratch layer into target and
+    // return its pixel mask {box, mask} (null if nothing was drawn); hint
+    // = rough box [x, y, w, h] it paints into. Walkers behind it get the
+    // masked pixels copied back with occlude().
+    masked(target, scratch, hint, draw) {
+        const W = this.w, H = this.h, S = scratch;
+        this.into(S, draw);
+        const [hx, hy, hw, hh] = hint;
+        const sx1 = Math.max(0, Math.floor(hx) - 8), sx2 = Math.min(W, Math.ceil(hx + hw) + 8);
+        const sy1 = Math.max(0, Math.floor(hy) - 8), sy2 = Math.min(H, Math.ceil(hy + hh) + 8);
+        let x1 = W, y1 = H, x2 = -1, y2 = -1;
+        for (let y = sy1; y < sy2; y++) {
+            const row = y * W;
+            let any = false;
+            for (let x = sx1; x < sx2; x++) {
+                if (S[row + x]) {
+                    any = true;
+                    if (x < x1)
+                        x1 = x;
+                    if (x > x2)
+                        x2 = x;
+                }
+            }
+            if (any) {
+                if (y < y1)
+                    y1 = y;
+                y2 = y;
+            }
+        }
+        let res = null;
+        if (x2 >= 0) {
+            const bw = x2 - x1 + 1, bh = y2 - y1 + 1;
+            const mask = new Uint8Array(bw * bh);
+            for (let y = y1; y <= y2; y++) {
+                for (let x = x1; x <= x2; x++) {
+                    const i = y * W + x, p = S[i];
+                    if (p) {
+                        target[i] = p;
+                        mask[(y - y1) * bw + (x - x1)] = 1;
+                    }
+                }
+            }
+            res = {box: [x1, y1, bw, bh], mask};
+        }
+        for (let y = sy1; y < sy2; y++)
+            S.fill(0, y * W + sx1, y * W + sx2);
+        return res;
+    }
+
+    // Copy the masked pixels of s (from masked()) from the on-screen copy of its
+    // layer (litBuffer) back over the box x..x+w, top..top+h.
+    occlude(lit, s, x, top, w, h) {
+        const [bx, by, bw, bh] = s.box;
+        if (bx > x + w || bx + bw < x || by > top + h || by + bh < top)
+            return;
+        const W = this.w, t = this.t;
+        const x1 = Math.max(bx, Math.floor(x)), x2 = Math.min(bx + bw, Math.ceil(x + w));
+        const y1 = Math.max(by, Math.floor(top)), y2 = Math.min(by + bh, Math.ceil(top + h));
+        for (let yy = y1; yy < y2; yy++)
+            for (let xx = x1; xx < x2; xx++)
+                if (s.mask[(yy - by) * bw + (xx - bx)])
+                    t[yy * W + xx] = lit[yy * W + xx];
     }
 
     _luts() {

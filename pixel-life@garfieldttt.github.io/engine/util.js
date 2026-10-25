@@ -3,6 +3,8 @@
 export const rand = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
 export const randi = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
 export const chance = p => Math.random() < p;
+// grown trees in lo..hi, now and then a young one about half as big
+export const treeSize = (lo, hi) => (chance(0.15) ? randi(Math.round(lo * 0.45), Math.round(lo * 0.6)) : randi(lo, hi));
 export const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, t) => a + (b - a) * t;

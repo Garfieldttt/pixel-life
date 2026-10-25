@@ -49,7 +49,7 @@ export class World {
             this.layerA = g.layer();
             this.scratch = g.layer();
         }
-        const A = this.layerA, S = this.scratch, W = this.w, H = this.h;
+        const A = this.layerA, S = this.scratch;
         A.fill(0);
         g.into(A, () => this.terrain.render(g, env));
         g.into(A, () => this.renderGround(g, env));
@@ -57,50 +57,9 @@ export class World {
         // each object goes through the scratch layer once to get its mask
         S.fill(0);
         for (const o of this.objects) {
-            g.into(S, () => o.draw(g, env));
-            const [hx, hy, hw, hh] = o.hint;
-            const sx1 = Math.max(0, Math.floor(hx) - 8), sx2 = Math.min(W, Math.ceil(hx + hw) + 8);
-            const sy1 = Math.max(0, Math.floor(hy) - 8), sy2 = Math.min(H, Math.ceil(hy + hh) + 8);
-            let x1 = W, y1 = H, x2 = -1, y2 = -1;
-            for (let y = sy1; y < sy2; y++) {
-                const row = y * W;
-                let any = false;
-                for (let x = sx1; x < sx2; x++) {
-                    if (S[row + x]) {
-                        any = true;
-                        if (x < x1)
-                            x1 = x;
-                        if (x > x2)
-                            x2 = x;
-                    }
-                }
-                if (any) {
-                    if (y < y1)
-                        y1 = y;
-                    y2 = y;
-                }
-            }
-            if (x2 < 0) {
-                o.box = null;
-                continue;
-            }
-
-            const bw = x2 - x1 + 1, bh = y2 - y1 + 1;
-            const mask = new Uint8Array(bw * bh);
-            for (let y = y1; y <= y2; y++) {
-                for (let x = x1; x <= x2; x++) {
-                    const i = y * W + x, p = S[i];
-                    if (p) {
-                        A[i] = p;
-                        mask[(y - y1) * bw + (x - x1)] = 1;
-                        S[i] = 0;
-                    }
-                }
-            }
-            o.box = [x1, y1, bw, bh];
-            o.mask = mask;
-            for (let y = sy1; y < sy2; y++)
-                S.fill(0, y * W + sx1, y * W + sx2);
+            const sp = g.masked(A, S, o.hint, () => o.draw(g, env));
+            o.box = sp && sp.box;
+            o.mask = sp && sp.mask;
         }
     }
 
@@ -112,20 +71,9 @@ export class World {
         const lit = g.litBuffer(this.layerA);
         if (!lit)
             return;
-        const W = this.w, t = g.t;
-        for (const o of this.objects) {
-            if (!o.occlude || !o.box || o.y <= feetY)
-                continue;
-            const [bx, by, bw, bh] = o.box;
-            if (bx > x + w || bx + bw < x || by > top + h || by + bh < top)
-                continue;
-            const x1 = Math.max(bx, Math.floor(x)), x2 = Math.min(bx + bw, Math.ceil(x + w));
-            const y1 = Math.max(by, Math.floor(top)), y2 = Math.min(by + bh, Math.ceil(top + h));
-            for (let yy = y1; yy < y2; yy++)
-                for (let xx = x1; xx < x2; xx++)
-                    if (o.mask[(yy - by) * bw + (xx - bx)])
-                        t[yy * W + xx] = lit[yy * W + xx];
-        }
+        for (const o of this.objects)
+            if (o.occlude && o.box && o.y > feetY)
+                g.occlude(lit, o, x, top, w, h);
     }
 
     // Cheapest tile path (paths preferred over grass), 4-neighbour Dijkstra.

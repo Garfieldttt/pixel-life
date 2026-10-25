@@ -1,7 +1,7 @@
 // Big city motif in the cozy pixel look: a street of cottages, town houses
 // with shops, apartment blocks and towers; traffic, people, pets, a park
 // in the foreground and plenty of random events.
-import {rand, randi, chance, pick, weighted, clamp, steppedLevel} from './util.js';
+import {rand, randi, chance, pick, weighted, clamp, steppedLevel, treeSize} from './util.js';
 import {mix, shadow, highlight} from './gfx.js';
 import * as A from './art.js';
 import {Household, Win} from './windows.js';
@@ -77,7 +77,7 @@ export class Town {
         this.buildBuildings(env);
         this.buildSkyline();
         this.buildProps();
-        this.layerA = this.layerB = this.layerC = null;
+        this.layerA = this.layerB = this.layerC = this.layerT = null;
         for (let i = 0; i < 40; i++)
             this._populate(env, true);
     }
@@ -233,15 +233,15 @@ export class Town {
         this.curbTrees = [];
         for (let x = randi(40, 80); x < W; x += randi(110, 170)) {
             if (!this.lamps.some(l => Math.abs(l.x - x) < 26) && Math.abs(x - this.crossX - 12) > 30 && Math.abs(x - this.busX) > 36)
-                this.curbTrees.push({x, size: randi(14, 18), seed: randi(0, 1e6)});
+                this.curbTrees.push({x, size: treeSize(24, 30), seed: randi(0, 1e6)});
         }
         // park in the foreground
         this.parkTrees = [];
-        for (let x = randi(10, 40); x < W; x += randi(70, 120))
-            this.parkTrees.push({x, y: this.h - randi(2, 10), size: randi(20, 28), seed: randi(0, 1e6)});
+        for (let x = randi(10, 60); x < W; x += randi(150, 230))
+            this.parkTrees.push({x, y: this.h - randi(2, 10), size: treeSize(32, 40), seed: randi(0, 1e6)});
         this.parkBits = [];
         for (let x = randi(20, 60); x < W; x += randi(40, 80)) {
-            if (!this.parkTrees.some(t => Math.abs(t.x - x) < 24))
+            if (!this.parkTrees.some(t => Math.abs(t.x - x) < t.size * 0.5 + 16))
                 this.parkBits.push({x, kind: pick(['bench', 'flowers', 'flowers', 'fountain', 'bin', 'bushes', 'sandbox']), seed: randi(0, 1e6)});
         }
         if (!this.parkBits.some(b => b.kind === 'fountain') && this.parkBits.length)
@@ -269,10 +269,18 @@ export class Town {
         const px = randi(40, W - pw - 40), py = top + randi(Math.floor(H * 0.25), H - ph);
         this.pond = {x: px, y: py, w: pw, h: ph, seed: randi(0, 1e6)};
         taken.push([px - 24, py - 34, pw + 48, ph + 44]);
+        // no park tree crown over the pond; the others keep the meadow trees off
+        const crown = t => [t.x - t.size * 1.3, t.y - t.size * 3, t.size * 2.6, t.size * 3];
+        this.parkTrees = this.parkTrees.filter(t => {
+            const [x, y, w, h] = crown(t);
+            return x > px + pw + 8 || x + w < px - 8 || y > py + ph + 8;
+        });
+        for (const t of this.parkTrees)
+            taken.push(crown(t));
         for (let i = randi(2, 4); i > 0; i--)
             this.pondDucks.push({u: rand(-0.6, 0.6) * (i % 2 ? 1 : -1), v: rand(-0.4, 0.5), dir: chance(0.5) ? 1 : -1, t: rand(10), turn: rand(5, 20), drake: chance(0.5)});
         for (let tries = 0; tries < 60 && this.meadowTrees.length < Math.floor(W / 200); tries++) {
-            const size = randi(18, 26), x = randi(20, W - 20), y = top + randi(Math.floor(size * 1.6), H);
+            const size = treeSize(30, 40), x = randi(20, W - 20), y = top + randi(Math.floor(size * 1.6), H);
             if (free(x - size, y - size * 2.4, size * 2, size * 2.4 + 4)) {
                 taken.push([x - size - 10, y - size * 2.4, size * 2 + 20, size * 2.4 + 8]);
                 this.meadowTrees.push({x, y, size, seed: randi(0, 1e6)});
@@ -308,10 +316,13 @@ export class Town {
             this.layerA = g.layer();
             this.layerB = g.layer();
             this.layerC = g.layer();
+            this.layerT = g.layer();
+            this.scratch = g.layer();
         }
         this.layerA.fill(0);
         this.layerB.fill(0);
         this.layerC.fill(0);
+        this.layerT.fill(0);
         g.into(this.layerA, () => {
             this._drawSkyline(g, env);
             for (const b of this.buildings)
@@ -320,6 +331,13 @@ export class Town {
         });
         g.into(this.layerB, () => this._drawCurb(g, env));
         g.into(this.layerC, () => this._drawPark(g, env));
+        // park trees on their own layer, each with a mask, so people behind
+        // a tree stay behind it
+        this.scratch.fill(0);
+        const trees = [...this.parkTrees, ...this.meadowTrees].sort((a, b) => a.y - b.y);
+        for (const t of trees)
+            t.sprite = g.masked(this.layerT, this.scratch, [t.x - t.size * 1.6, t.y - t.size * 3.4, t.size * 3.2, t.size * 3.4 + 4],
+                () => A.bigTree(g, t.x, t.y, t.size, env.season, t.seed, env.weather.snowCover));
     }
 
     _snowLine(g, x, y, w, env) {
@@ -574,7 +592,7 @@ export class Town {
         // little garden between houses with a hedge and a tree
         A.grass(g, b.x, this.base - 20, b.w, 20, env.season, b.seed);
         A.fence(g, b.x, this.base, b.w, A.ramp(0xf0ece0));
-        A.bigTree(g, b.x + b.w / 2, this.base - 6, 18, env.season, b.seed, env.weather.snowCover);
+        A.bigTree(g, b.x + b.w / 2, this.base - 6, 28, env.season, b.seed, env.weather.snowCover);
     }
 
     _drawStreet(g, env) {
@@ -688,9 +706,6 @@ export class Town {
         for (const b of this.parkBits)
             this._parkBit(g, b, env);
         this._drawMeadow(g, env);
-        const trees = [...this.parkTrees, ...this.meadowTrees].sort((a, b) => a.y - b.y);
-        for (const t of trees)
-            A.bigTree(g, t.x, t.y, t.size, env.season, t.seed, env.weather.snowCover);
     }
 
     _drawMeadow(g, env) {
@@ -1284,7 +1299,18 @@ export class Town {
                 this._renderSnowman(g, o.x + 22, o.y - 1, o.snowman);
             else
                 drawPerson(g, o, o.x, o.y, o.dir, env);
+            this._behindTrees(g, o.x - 30, o.y - 70, 110, 72, o.y);
         }
+    }
+
+    // copy the park trees standing in front of feetY back over the box
+    _behindTrees(g, x, top, w, h, feetY) {
+        const lit = g.litBuffer(this.layerT);
+        if (!lit)
+            return;
+        for (const t of [...this.parkTrees, ...this.meadowTrees])
+            if (t.sprite && t.y > feetY)
+                g.occlude(lit, t.sprite, x, top, w, h);
     }
 
     // grows from a snowball into a snowman with hat, scarf and carrot
@@ -1573,7 +1599,7 @@ export class Town {
         if (env.season === 'autumn' && Math.random() < real * 1.2) {
             const t = pick([...this.curbTrees, ...this.parkTrees]);
             if (t)
-                this.leaves.push({x: t.x + rand(-14, 14), y: (t.y || this.roadTop) - 40, ground: (t.y || this.roadTop - 3) + rand(0, 10), t: 0, c: pick([0xe08a30, 0xd05a28, 0xf0c040])});
+                this.leaves.push({x: t.x + rand(-t.size, t.size), y: (t.y || this.roadTop) - t.size * 2, ground: (t.y || this.roadTop - 3) + rand(0, 10), t: 0, c: pick([0xe08a30, 0xd05a28, 0xf0c040])});
         }
         for (const l of this.leaves) {
             l.t += real;
@@ -1691,6 +1717,7 @@ export class Town {
         }
         // park in front
         g.compose(this.layerC, this.parkTop - 80, this.h, true);
+        g.compose(this.layerT, this.parkTop - 160, this.h, true);
         for (const b of this.parkBits) {
             if (b.fx !== undefined && env.weather.snowCover < 0.3) {
                 for (let i = 0; i < 10; i++) {
@@ -1702,8 +1729,10 @@ export class Town {
         }
         this._renderMeadow(g, env);
         const park = this.people.filter(p => p.lane === 'park').sort((a, b) => a.y - b.y);
-        for (const p of park)
+        for (const p of park) {
             this._renderPerson(g, p, env);
+            this._behindTrees(g, p.x - 30, p.y - 70, 110, 72, p.y);
+        }
         for (const l of this.leaves) {
             g.rect(l.x, l.y, 2, 1, l.c);
             g.px(l.x + 1, l.y + 1, shadow(l.c, 0.3));

@@ -1,7 +1,7 @@
 // Village motif, top-down like a cozy farm game: a cliff with forest at the top,
 // houses below it, a main road, a plaza with fountain and market, gardens,
 // and a lake with a pier at the bottom. Villagers follow small routines.
-import {rand, randi, chance, pick, weighted, clamp} from './util.js';
+import {rand, randi, chance, pick, weighted, clamp, treeSize} from './util.js';
 import {mix} from './gfx.js';
 import * as A from './art.js';
 import * as O from './objects.js';
@@ -136,14 +136,15 @@ export class Village extends World {
         for (const sx of stairs)
             mark(sx - 1, 0, 4, mainY);
         // forest on the high ground
-        for (let i = 0; i < C * ch * 0.9; i++) {
+        // forest on the high ground, sized like the trees in the country
+        for (let i = 0; i < C * ch * 0.45; i++) {
             const x = randi(-1, C), ty = randi(0, ch - 1);
-            if (stairs.some(s => x >= s - 1 && x <= s + 2))
+            if (stairs.some(s => x >= s - 2 && x <= s + 3))
                 continue;
-            const size = randi(14, 20), bx = x * TILE + randi(0, 10), by = (ty + 1) * TILE - randi(0, 8);
+            const size = treeSize(26, 34), bx = x * TILE + randi(0, 10), by = (ty + 1) * TILE - randi(0, 8);
             const pine = chance(0.4), seed = randi(0, 1e6);
-            this.add(by, (g, e) => (pine ? O.pine(g, bx, by, size * 0.8, this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, Math.round(size * 1.15), this._season(e), seed, e.weather.snowCover)),
-                [bx - size * 1.3, by - size * 3, size * 2.6, size * 3]);
+            this.add(by, (g, e) => (pine ? O.pine(g, bx, by, Math.round(size * 1.1), this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), seed, e.weather.snowCover)),
+                [bx - size * 1.6, by - size * 3.4, size * 3.2, size * 3.4]);
         }
         // plaza centerpiece and furniture
         const cx = (px + pw / 2) * TILE, cy = (py + Math.ceil(ph / 2)) * TILE + 6;
@@ -193,7 +194,7 @@ export class Village extends World {
         }
         this.boat = {x: (pierX + 2) * TILE + 6, y: (wt + 1) * TILE + 10};
         // gardens, trees and bushes on the free grass
-        const place = (w, h, fn, tries = 40, maxY = R - 2) => {
+        const place = (w, h, fn, tries = 80, maxY = R - 2) => {
             for (let i = 0; i < tries; i++) {
                 const x = randi(0, C - w), y = randi(mainY + 3, maxY);
                 if (isFree(x - 1, y - h, w + 2, h + 2)) {
@@ -204,17 +205,21 @@ export class Village extends World {
             }
             return false;
         };
-        const nTrees = Math.round(C * R / 70);
+        // grown trees about three people tall; the lower crown stays clear
+        // of other things, the top may reach over a path, and only the trunk
+        // blocks walkers
+        const nTrees = Math.round(C * R / 90);
         for (let i = 0; i < nTrees; i++) {
-            place(2, 3, (x, y) => {
-                const bx = x * TILE + 16, by = y * TILE + 14, size = randi(12, 17), seed = randi(0, 1e6);
+            const size = treeSize(26, 34), tw = Math.ceil(size * 2 / TILE), th = Math.ceil(size * 1.6 / TILE);
+            place(tw, th, (x, y) => {
+                const mx = x + (tw >> 1), bx = mx * TILE + 8, by = y * TILE + 14, seed = randi(0, 1e6);
                 const kind = weighted([['oak', 4], ['maple', 2], ['fruit', 2], ['pine', 1.5]]);
-                this.add(by, (g, e) => (kind === 'pine' ? O.pine(g, bx, by, size * 0.8, this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, Math.round(size * 1.25), this._season(e), kind === 'fruit' ? seed - (seed % 4) + 1 : seed, e.weather.snowCover)),
-                    [bx - size * 1.3, by - size * 3, size * 2.6, size * 3 + 4], [x, y, 2, 1]);
+                this.add(by, (g, e) => (kind === 'pine' ? O.pine(g, bx, by, Math.round(size * 1.1), this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), kind === 'fruit' ? seed - (seed % 4) + 1 : seed, e.weather.snowCover)),
+                    [bx - size * 1.6, by - size * 3.4, size * 3.2, size * 3.4 + 4], [mx, y, 1, 1]);
             });
         }
         // a bush fills two by two tiles, so walkers go around all of it
-        for (let i = 0; i < C * R / 70; i++) {
+        for (let i = 0; i < C * R / 110; i++) {
             place(2, 2, (x, y) => {
                 const bx = x * TILE + 4, by = y * TILE + 2, s = randi(0, 1e6), w = randi(18, 24);
                 this.add(by + 12, (g, e) => bushClump(g, bx, by - 6, w, 18, this._season(e), s), [bx - 6, by - 12, w + 12, 28], [x, y - 1, 2, 2]);
@@ -893,7 +898,8 @@ export class Village extends World {
                 o.vendor.state = 'idle';
                 const f = personFigure(o.vendor, 0, 'down');
                 drawPerson(g, o.vendor, o.x - f.w / 2, o.y, 1, env, 'down');
-                box = [o.x - f.w / 2, o.y - f.h, f.w, f.h];
+                // stands under the awning: only the counter hides the feet
+                box = [o.x - f.w / 2, o.y - 2, f.w, 2];
             } else {
                 o.p.state = 'sit';
                 drawPerson(g, o.p, o.x, o.y, 1, env);
