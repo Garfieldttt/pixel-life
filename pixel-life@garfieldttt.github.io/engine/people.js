@@ -244,6 +244,23 @@ export function makeMedieval(env, opts = {}) {
 }
 
 // frame: 0 stand, 1 step, 2 pass, 3 other step; 'sit' for sitting
+// The head is drawn on its usual small grid and stretched on the way
+// onto the figure: from row sys[i] on everything moves down one more row
+// and from column sx on one column right, so rects spanning those lines
+// grow. Every hair style and hat grows with it, giving the big round
+// heads of cozy pixel games.
+function stretchHead(c, sx, sys) {
+    const X = x => x + (x >= sx ? 1 : 0), Y = y => y + sys.filter(s => y >= s).length;
+    return {
+        set: (x, y, col) => c.set(X(x), Y(y), col),
+        rect: (x, y, w, h, col) => c.rect(X(x), Y(y), X(x + w - 1) - X(x) + 1, Y(y + h - 1) - Y(y) + 1, col),
+        hline: (x, y, w, col) => c.rect(X(x), Y(y), X(x + w - 1) - X(x) + 1, 1, col),
+        get: (x, y) => c.get(X(x), Y(y)),
+    };
+}
+// rows the head grows by
+const HEAD_GROW = 2;
+
 function buildPerson(p, frame, blink = false) {
     const kid = p.kid;
     const W = 16, H = kid ? 24 : 31;
@@ -261,151 +278,152 @@ function buildPerson(p, frame, blink = false) {
     // ---- head (12 wide incl. hair), facing right
     const hx = 2, hy = T;
     const headH = 10;
-    c.rect(hx + 2, hy + 2, 9, headH - 2, skin);
-    c.rect(hx + 3, hy + headH, 7, 1, skin);
-    c.rect(hx + 2, hy + headH - 2, 2, 2, skinS);
+    const hc = stretchHead(c, hx + 6, [hy + 3, hy + 7]);
+    hc.rect(hx + 2, hy + 2, 9, headH - 2, skin);
+    hc.rect(hx + 3, hy + headH, 7, 1, skin);
+    hc.rect(hx + 2, hy + headH - 2, 2, 2, skinS);
     if (blink) {
-        c.set(hx + 8, hy + 6, INK);
-        c.set(hx + 9, hy + 6, sh(skin, 0.3));
+        hc.set(hx + 8, hy + 6, INK);
+        hc.set(hx + 9, hy + 6, sh(skin, 0.3));
     } else {
-        c.set(hx + 8, hy + 5, INK);
-        c.set(hx + 8, hy + 6, INK);
-        c.set(hx + 9, hy + 5, 0x6a4a5a);
+        hc.set(hx + 8, hy + 5, INK);
+        hc.set(hx + 8, hy + 6, INK);
+        hc.set(hx + 9, hy + 5, 0x6a4a5a);
     }
     if (p.blush)
-        c.set(hx + 7, hy + 8, 0xf09a9a);
-    c.set(hx + 10, hy + 8, sh(skin, 0.35));
-    c.set(hx + 11, hy + 5, skin);
-    c.set(hx + 11, hy + 6, skin);
-    c.set(hx + 4, hy + 6, skinS); // ear
+        hc.set(hx + 7, hy + 8, 0xf09a9a);
+    hc.set(hx + 10, hy + 8, sh(skin, 0.35));
+    hc.set(hx + 11, hy + 5, skin);
+    hc.set(hx + 11, hy + 6, skin);
+    hc.set(hx + 4, hy + 6, skinS); // ear
     const style = p.costume === 'witch' ? 'witch' : p.style;
     if (style !== 'bald') {
-        c.rect(hx + 3, hy, 7, 1, hair);
-        c.rect(hx + 1, hy + 1, 10, 2, hair);
-        c.rect(hx + 1, hy + 3, 4, 3, hair);
-        c.rect(hx + 5, hy + 3, 6, 1, hair); // fringe
-        c.set(hx + 9, hy + 4, hair);
-        c.rect(hx + 4, hy + 1, 4, 1, hairH);
-        c.set(hx + 1, hy + 5, hairS);
+        hc.rect(hx + 3, hy, 7, 1, hair);
+        hc.rect(hx + 1, hy + 1, 10, 2, hair);
+        hc.rect(hx + 1, hy + 3, 4, 3, hair);
+        hc.rect(hx + 5, hy + 3, 6, 1, hair); // fringe
+        hc.set(hx + 9, hy + 4, hair);
+        hc.rect(hx + 4, hy + 1, 4, 1, hairH);
+        hc.set(hx + 1, hy + 5, hairS);
     } else {
-        c.rect(hx + 1, hy + 4, 3, 3, hair);
+        hc.rect(hx + 1, hy + 4, 3, 3, hair);
     }
     switch (style) {
     case 'long':
-        c.rect(hx, hy + 3, 3, 9, hair);
-        c.rect(hx + 1, hy + 6, 3, 6, hair);
-        c.set(hx, hy + 11, hairS);
+        hc.rect(hx, hy + 3, 3, 9, hair);
+        hc.rect(hx + 1, hy + 6, 3, 6, hair);
+        hc.set(hx, hy + 11, hairS);
         break;
     case 'bob':
-        c.rect(hx, hy + 3, 4, 6, hair);
-        c.rect(hx + 10, hy + 3, 1, 4, hair);
+        hc.rect(hx, hy + 3, 4, 6, hair);
+        hc.rect(hx + 10, hy + 3, 1, 4, hair);
         break;
     case 'pony':
-        c.rect(hx - 2, hy + 3, 3, 2, hair);
-        c.rect(hx - 2, hy + 5, 2, 5, hair);
-        c.set(hx - 1, hy + 3, 0xd84848);
+        hc.rect(hx - 2, hy + 3, 3, 2, hair);
+        hc.rect(hx - 2, hy + 5, 2, 5, hair);
+        hc.set(hx - 1, hy + 3, 0xd84848);
         break;
     case 'bun':
-        c.rect(hx + 2, hy - 3, 4, 3, hair);
-        c.set(hx + 3, hy - 3, hairH);
+        hc.rect(hx + 2, hy - 3, 4, 3, hair);
+        hc.set(hx + 3, hy - 3, hairH);
         break;
     case 'spiky':
         for (let i = 0; i < 4; i++)
-            c.set(hx + 2 + i * 2, hy - 1, hair);
+            hc.set(hx + 2 + i * 2, hy - 1, hair);
         break;
     case 'curly':
         for (let i = 0; i < 6; i++)
-            c.set(hx + 1 + i * 2, hy - 1, hair);
-        c.rect(hx, hy + 2, 2, 6, hair);
+            hc.set(hx + 1 + i * 2, hy - 1, hair);
+        hc.rect(hx, hy + 2, 2, 6, hair);
         break;
     case 'cap':
-        c.rect(hx + 1, hy - 1, 10, 3, p.shirt === shirt ? sh(p.shirt, 0.1) : p.shirt);
-        c.rect(hx + 8, hy + 2, 5, 1, sh(p.shirt, 0.35));
-        c.rect(hx + 3, hy - 1, 3, 1, hi(p.shirt, 0.3));
+        hc.rect(hx + 1, hy - 1, 10, 3, p.shirt === shirt ? sh(p.shirt, 0.1) : p.shirt);
+        hc.rect(hx + 8, hy + 2, 5, 1, sh(p.shirt, 0.35));
+        hc.rect(hx + 3, hy - 1, 3, 1, hi(p.shirt, 0.3));
         break;
     case 'hat':
-        c.rect(hx + 2, hy - 2, 8, 3, 0x6a4a34);
-        c.rect(hx, hy + 1, 13, 1, 0x7a5a40);
-        c.rect(hx + 2, hy, 8, 1, 0xc84a3a);
+        hc.rect(hx + 2, hy - 2, 8, 3, 0x6a4a34);
+        hc.rect(hx, hy + 1, 13, 1, 0x7a5a40);
+        hc.rect(hx + 2, hy, 8, 1, 0xc84a3a);
         break;
     case 'beanie':
-        c.rect(hx + 1, hy - 1, 10, 4, p.scarf || 0xd84848);
-        c.rect(hx + 1, hy + 2, 10, 1, hi(p.scarf || 0xd84848, 0.4));
-        c.rect(hx + 5, hy - 3, 2, 2, 0xf4f4f4);
+        hc.rect(hx + 1, hy - 1, 10, 4, p.scarf || 0xd84848);
+        hc.rect(hx + 1, hy + 2, 10, 1, hi(p.scarf || 0xd84848, 0.4));
+        hc.rect(hx + 5, hy - 3, 2, 2, 0xf4f4f4);
         break;
     case 'witch':
-        c.rect(hx + 5, hy - 3, 2, 3, 0x2a1a3a);
-        c.rect(hx + 3, hy - 1, 6, 2, 0x2a1a3a);
-        c.rect(hx, hy + 1, 13, 1, 0x3a2a4a);
+        hc.rect(hx + 5, hy - 3, 2, 3, 0x2a1a3a);
+        hc.rect(hx + 3, hy - 1, 6, 2, 0x2a1a3a);
+        hc.rect(hx, hy + 1, 13, 1, 0x3a2a4a);
         break;
     // medieval headwear
     case 'hood': {
         // hood with a shoulder cape and a short tail (liripipe)
         const hd = p.hood, hdS = sh(hd, 0.3), hdH = hi(hd, 0.25);
-        c.rect(hx + 2, hy - 1, 8, 1, hd);
-        c.rect(hx + 1, hy, 10, 3, hd);
-        c.rect(hx, hy + 2, 5, 9, hd);
-        c.rect(hx + 9, hy + 2, 2, 2, hd);
-        c.rect(hx + 3, hy, 5, 1, hdH);
-        c.rect(hx, hy + 8, 3, 3, hdS);
-        c.rect(hx - 2, hy + 3, 3, 2, hd);
-        c.set(hx - 3, hy + 4, hdS);
+        hc.rect(hx + 2, hy - 1, 8, 1, hd);
+        hc.rect(hx + 1, hy, 10, 3, hd);
+        hc.rect(hx, hy + 2, 5, 9, hd);
+        hc.rect(hx + 9, hy + 2, 2, 2, hd);
+        hc.rect(hx + 3, hy, 5, 1, hdH);
+        hc.rect(hx, hy + 8, 3, 3, hdS);
+        hc.rect(hx - 2, hy + 3, 3, 2, hd);
+        hc.set(hx - 3, hy + 4, hdS);
         break;
     }
     case 'coif':
-        c.rect(hx + 1, hy - 1, 9, 4, 0xf0ece0);
-        c.rect(hx + 1, hy + 3, 3, 4, 0xf0ece0);
-        c.rect(hx + 2, hy - 1, 6, 1, 0xffffff);
-        c.rect(hx + 1, hy + 6, 3, 1, 0xd8d0c0);
+        hc.rect(hx + 1, hy - 1, 9, 4, 0xf0ece0);
+        hc.rect(hx + 1, hy + 3, 3, 4, 0xf0ece0);
+        hc.rect(hx + 2, hy - 1, 6, 1, 0xffffff);
+        hc.rect(hx + 1, hy + 6, 3, 1, 0xd8d0c0);
         break;
     case 'veil': {
         // veil over the hair and a wimple around the chin
         const v = p.veil || 0xf2eee4, vS = sh(v, 0.2);
-        c.rect(hx + 1, hy - 1, 10, 3, v);
-        c.rect(hx, hy + 2, 5, 11, v);
-        c.rect(hx + 5, hy + 9, 5, 2, v);
-        c.rect(hx + 9, hy + 2, 2, 2, v);
-        c.rect(hx, hy + 10, 3, 3, vS);
-        c.rect(hx + 3, hy - 1, 5, 1, hi(v, 0.4));
+        hc.rect(hx + 1, hy - 1, 10, 3, v);
+        hc.rect(hx, hy + 2, 5, 11, v);
+        hc.rect(hx + 5, hy + 9, 5, 2, v);
+        hc.rect(hx + 9, hy + 2, 2, 2, v);
+        hc.rect(hx, hy + 10, 3, 3, vS);
+        hc.rect(hx + 3, hy - 1, 5, 1, hi(v, 0.4));
         break;
     }
     case 'tonsure':
-        c.rect(hx + 3, hy, 6, 2, skin);
-        c.rect(hx + 4, hy, 3, 1, hi(skin, 0.25));
+        hc.rect(hx + 3, hy, 6, 2, skin);
+        hc.rect(hx + 4, hy, 3, 1, hi(skin, 0.25));
         break;
     case 'helm':
         // iron kettle hat with a wide brim
-        c.rect(hx + 2, hy - 2, 8, 4, 0x8a8e98);
-        c.rect(hx + 3, hy - 2, 4, 1, 0xc8ccd4);
-        c.rect(hx - 1, hy + 2, 14, 1, 0x6a6e78);
-        c.rect(hx, hy + 2, 6, 1, 0xa8acb4);
+        hc.rect(hx + 2, hy - 2, 8, 4, 0x8a8e98);
+        hc.rect(hx + 3, hy - 2, 4, 1, 0xc8ccd4);
+        hc.rect(hx - 1, hy + 2, 14, 1, 0x6a6e78);
+        hc.rect(hx, hy + 2, 6, 1, 0xa8acb4);
         break;
     case 'feather': {
         const cap = p.cap || 0x8a1a2a;
-        c.rect(hx + 1, hy - 1, 11, 3, cap);
-        c.rect(hx + 2, hy - 1, 5, 1, hi(cap, 0.3));
-        c.rect(hx, hy + 1, 3, 1, sh(cap, 0.3));
-        c.rect(hx + 1, hy - 5, 2, 4, p.feather || 0xf0ece0);
-        c.set(hx, hy - 6, p.feather || 0xf0ece0);
+        hc.rect(hx + 1, hy - 1, 11, 3, cap);
+        hc.rect(hx + 2, hy - 1, 5, 1, hi(cap, 0.3));
+        hc.rect(hx, hy + 1, 3, 1, sh(cap, 0.3));
+        hc.rect(hx + 1, hy - 5, 2, 4, p.feather || 0xf0ece0);
+        hc.set(hx, hy - 6, p.feather || 0xf0ece0);
         break;
     }
     case 'straw':
-        c.rect(hx + 2, hy - 2, 8, 3, 0xe0c068);
-        c.rect(hx + 3, hy - 2, 4, 1, 0xf4dc90);
-        c.rect(hx - 2, hy + 1, 16, 1, 0xd0aa50);
-        c.rect(hx + 2, hy, 8, 1, 0x9a5a3a);
+        hc.rect(hx + 2, hy - 2, 8, 3, 0xe0c068);
+        hc.rect(hx + 3, hy - 2, 4, 1, 0xf4dc90);
+        hc.rect(hx - 2, hy + 1, 16, 1, 0xd0aa50);
+        hc.rect(hx + 2, hy, 8, 1, 0x9a5a3a);
         break;
     case 'crown':
-        c.rect(hx + 2, hy - 2, 8, 2, 0xf0c030);
-        c.set(hx + 2, hy - 3, 0xf0c030);
-        c.set(hx + 5, hy - 3, 0xf0c030);
-        c.set(hx + 9, hy - 3, 0xf0c030);
-        c.set(hx + 5, hy - 2, 0xd83030);
+        hc.rect(hx + 2, hy - 2, 8, 2, 0xf0c030);
+        hc.set(hx + 2, hy - 3, 0xf0c030);
+        hc.set(hx + 5, hy - 3, 0xf0c030);
+        hc.set(hx + 9, hy - 3, 0xf0c030);
+        hc.set(hx + 5, hy - 2, 0xd83030);
         break;
     }
-    // ---- body
-    const by = hy + headH + 1;
-    const bodyH = kid ? 6 : 8;
+    // ---- body (shorter by what the head grew)
+    const by = hy + headH + 1 + HEAD_GROW;
+    const bodyH = kid ? 5 : 7;
     // the far arm swings the other way, mostly behind the body
     if (frame !== 'sit' && !p.umbrella) {
         const back = frame === 1 ? -3 : frame === 3 ? 3 : 0;
@@ -463,7 +481,7 @@ function buildPerson(p, frame, blink = false) {
     }
     // ---- legs
     const ly = by + bodyH;
-    const legH = kid ? 5 : 7;
+    const legH = kid ? 4 : 6;
     const pants = p.pants, pantsS = sh(pants, 0.3);
     if (ghost) {
         c.rect(hx, hy - 1, 13, ly - hy + legH + 2, 0xf4f4f8);
@@ -545,58 +563,60 @@ function buildPersonFB(p, frame, face, blink = false) {
     const shirtS = sh(shirt, 0.25), shirtH = hi(shirt, 0.2);
     const back = face === 'up';
     // head
-    c.rect(hx + 1, hy + 2, 10, headH - 2, skin);
-    c.rect(hx + 2, hy + headH, 8, 1, skin);
-    c.rect(hx + 1, hy + headH - 2, 10, 1, skinS);
+    const hc = stretchHead(c, hx + 6, [hy + 3, hy + 7]);
+    hc.rect(hx + 1, hy + 2, 10, headH - 2, skin);
+    hc.rect(hx + 2, hy + headH, 8, 1, skin);
+    hc.rect(hx + 1, hy + headH - 2, 2, 1, skinS);
+    hc.rect(hx + 9, hy + headH - 2, 2, 1, skinS);
     if (p.style !== 'bald' || back) {
-        c.rect(hx + 2, hy, 8, 1, hair);
-        c.rect(hx + 1, hy + 1, 10, 3, hair);
-        c.rect(hx + 3, hy + 1, 4, 1, hairH);
-        c.rect(hx, hy + 2, 2, 5, hair);
-        c.rect(hx + 10, hy + 2, 2, 5, hair);
+        hc.rect(hx + 2, hy, 8, 1, hair);
+        hc.rect(hx + 1, hy + 1, 10, 3, hair);
+        hc.rect(hx + 3, hy + 1, 4, 1, hairH);
+        hc.rect(hx, hy + 2, 2, 5, hair);
+        hc.rect(hx + 10, hy + 2, 2, 5, hair);
     }
     if (back) {
-        c.rect(hx + 1, hy + 2, 10, 7, hair);
-        c.rect(hx + 2, hy + 3, 3, 1, hairH);
+        hc.rect(hx + 1, hy + 2, 10, 7, hair);
+        hc.rect(hx + 2, hy + 3, 3, 1, hairH);
         if (p.style === 'long' || p.style === 'pony' || p.style === 'bob')
-            c.rect(hx + 1, hy + 8, 10, p.style === 'bob' ? 2 : 5, hairS);
+            hc.rect(hx + 1, hy + 8, 10, p.style === 'bob' ? 2 : 5, hairS);
     } else {
-        c.rect(hx + 3, hy + (blink ? 5 : 4), 1, blink ? 1 : 2, INK);
-        c.rect(hx + 8, hy + (blink ? 5 : 4), 1, blink ? 1 : 2, INK);
-        c.set(hx + 3, hy + 4, 0x6a4a5a);
-        c.set(hx + 8, hy + 4, 0x6a4a5a);
+        hc.rect(hx + 3, hy + (blink ? 5 : 4), 1, blink ? 1 : 2, INK);
+        hc.rect(hx + 8, hy + (blink ? 5 : 4), 1, blink ? 1 : 2, INK);
+        hc.set(hx + 3, hy + 4, 0x6a4a5a);
+        hc.set(hx + 8, hy + 4, 0x6a4a5a);
         if (p.blush) {
-            c.set(hx + 2, hy + 7, 0xf09a9a);
-            c.set(hx + 9, hy + 7, 0xf09a9a);
+            hc.set(hx + 2, hy + 7, 0xf09a9a);
+            hc.set(hx + 9, hy + 7, 0xf09a9a);
         }
-        c.rect(hx + 5, hy + 7, 2, 1, sh(skin, 0.4));
+        hc.rect(hx + 5, hy + 7, 2, 1, sh(skin, 0.4));
         if (p.style === 'long')
-            c.rect(hx, hy + 2, 2, 10, hair), c.rect(hx + 10, hy + 2, 2, 10, hair);
+            hc.rect(hx, hy + 2, 2, 10, hair), hc.rect(hx + 10, hy + 2, 2, 10, hair);
     }
     if (p.style === 'cap' || p.style === 'beanie' || p.style === 'hat') {
-        const hc = p.style === 'hat' ? 0x6a4a34 : p.style === 'beanie' ? (p.scarf || 0xd84848) : p.shirt;
-        c.rect(hx + 1, hy - 1, 10, 3, hc);
-        c.rect(hx + 2, hy - 1, 4, 1, hi(hc, 0.3));
+        const hatC = p.style === 'hat' ? 0x6a4a34 : p.style === 'beanie' ? (p.scarf || 0xd84848) : p.shirt;
+        hc.rect(hx + 1, hy - 1, 10, 3, hatC);
+        hc.rect(hx + 2, hy - 1, 4, 1, hi(hatC, 0.3));
         if (p.style === 'hat')
-            c.rect(hx - 1, hy + 2, 14, 1, 0x7a5a40);
+            hc.rect(hx - 1, hy + 2, 14, 1, 0x7a5a40);
     }
     if (p.style === 'bun')
-        c.rect(hx + 4, hy - 3, 4, 3, hair);
+        hc.rect(hx + 4, hy - 3, 4, 3, hair);
     const headwear = {hood: p.hood, coif: 0xf0ece0, veil: p.veil || 0xf2eee4, helm: 0x8a8e98, feather: p.cap, straw: 0xe0c068, crown: 0xf0c030}[p.style];
     if (headwear) {
-        c.rect(hx + 1, hy - 1, 10, 3, headwear);
-        c.rect(hx + 2, hy - 1, 4, 1, hi(headwear, 0.3));
+        hc.rect(hx + 1, hy - 1, 10, 3, headwear);
+        hc.rect(hx + 2, hy - 1, 4, 1, hi(headwear, 0.3));
         if (p.style === 'hood' || p.style === 'veil') {
-            c.rect(hx, hy + 1, 2, 9, headwear);
-            c.rect(hx + 10, hy + 1, 2, 9, headwear);
+            hc.rect(hx, hy + 1, 2, 9, headwear);
+            hc.rect(hx + 10, hy + 1, 2, 9, headwear);
             if (back)
-                c.rect(hx + 1, hy + 1, 10, 9, headwear);
+                hc.rect(hx + 1, hy + 1, 10, 9, headwear);
         }
         if (p.style === 'straw' || p.style === 'helm')
-            c.rect(hx - 2, hy + 2, 16, 1, sh(headwear, 0.2));
+            hc.rect(hx - 2, hy + 2, 16, 1, sh(headwear, 0.2));
     }
     // body
-    const by = hy + headH + 1, bodyH = kid ? 6 : 8;
+    const by = hy + headH + 1 + HEAD_GROW, bodyH = kid ? 5 : 7;
     c.rect(hx + 1, by, 10, bodyH, shirt);
     c.rect(hx + 1, by, 1, bodyH, shirtH);
     c.rect(hx + 10, by, 1, bodyH, shirtS);
@@ -625,7 +645,7 @@ function buildPersonFB(p, frame, face, blink = false) {
     if (p.belt)
         c.rect(hx + 1, by + bodyH - 2, 10, 1, p.belt);
     // legs: one lifted while walking
-    const ly = by + bodyH, legH = kid ? 5 : 7;
+    const ly = by + bodyH, legH = kid ? 4 : 6;
     if (p.robe) {
         c.rect(hx, ly, 12, legH, shirt);
         c.rect(hx, ly + legH - 1, 12, 1, shirtS);
@@ -767,8 +787,8 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
         const hand = face === 'side' ? (flip ? x + 4 : x + f.w - 5) : x + f.w - 3;
         const ux = Math.floor(hand - (face === 'side' ? (flip ? -2 : 2) : 3));
         const cy = top - 13;
-        g.rect(hand, cy + 4, 1, top + 19 - cy - 4, INK);
-        g.rect(hand - 1, top + 18, 2, 2, INK);
+        g.rect(hand, cy + 4, 1, top + 21 - cy - 4, INK);
+        g.rect(hand - 1, top + 20, 2, 2, INK);
         for (let i = 0; i < 6; i++) {
             const half = 3 + i * 2;
             g.rect(ux - half - 1, cy + i, half * 2 + 3, 1, INK);
@@ -782,7 +802,7 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
     }
     if (p.balloon) {
         const bx = Math.floor(x + (flip ? 3 : f.w - 4)), by = Math.floor(top - 10 + Math.sin(p.t * 2) * 1.5);
-        g.line(bx, by + 4, Math.floor(x + (flip ? 4 : f.w - 5)), top + 11, 0xd8d8d8);
+        g.line(bx, by + 4, Math.floor(x + (flip ? 4 : f.w - 5)), top + 13, 0xd8d8d8);
         g.disc(bx, by, 4, INK);
         g.disc(bx, by, 3, p.balloon);
         g.rect(bx - 2, by - 2, 2, 1, hi(p.balloon, 0.6));
@@ -796,14 +816,14 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
     if (p.phone && env.dark > 0.5 && moving) {
         // held in the hand in front of the chest, not at the mouth
         const px = flip ? x + 3 : x + f.w - 4;
-        g.rectE(px, top + 17, 2, 2, 0xb0d8ff);
-        g.glow(px + 1, top + 16, 4, 0x80b0ff, 0.18);
+        g.rectE(px, top + 19, 2, 2, 0xb0d8ff);
+        g.glow(px + 1, top + 18, 4, 0x80b0ff, 0.18);
     }
     if (p.carry && p.carry !== 'none')
         drawCarry(g, p, f, x, top, flip, env);
     if (p.lantern) {
         // lantern hanging from the hand: a candle behind horn panes
-        const lx = Math.floor(flip ? x + 1 : x + f.w - 4), ly = top + 20 + (moving && Math.floor(p.t * 4) % 2 ? 1 : 0);
+        const lx = Math.floor(flip ? x + 1 : x + f.w - 4), ly = top + 22 + (moving && Math.floor(p.t * 4) % 2 ? 1 : 0);
         g.rect(lx, ly - 3, 1, 3, INK);
         g.rect(lx - 2, ly, 5, 6, INK);
         if (env.dark > 0.4) {
@@ -818,7 +838,7 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
         const df = dogFigure(d, d.sniff > 0 ? 0 : Math.floor(p.t * 6));
         const dx = flip ? x + f.w + 6 : x - df.w - 6;
         drawFigure(g, df, dx, y, flip);
-        g.line(flip ? x + 3 : x + f.w - 4, top + 19, flip ? dx + 3 : dx + df.w - 4, y - df.h + 5, 0xb83a3a);
+        g.line(flip ? x + 3 : x + f.w - 4, top + 21, flip ? dx + 3 : dx + df.w - 4, y - df.h + 5, 0xb83a3a);
     }
 }
 
@@ -826,7 +846,7 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
 // top + 19 on the side the figure faces
 function drawCarry(g, p, f, x, top, flip, env) {
     const front = flip ? x + 2 : x + f.w - 4, back = flip ? x + f.w - 4 : x + 2;
-    const hy = top + 19, t = p.t;
+    const hy = top + 21, t = p.t;
     switch (p.carry) {
     case 'basket':
         g.rect(front - 3, hy - 1, 8, 6, INK);
@@ -841,14 +861,14 @@ function drawCarry(g, p, f, x, top, flip, env) {
     case 'sack': {
         // bulging sack over the shoulder, tied at the neck
         const sx = back - 3;
-        g.rect(sx + 1, top + 9, 7, 11, INK);
-        g.rect(sx, top + 11, 9, 7, INK);
-        g.rect(sx + 2, top + 10, 5, 9, 0xc8b088);
-        g.rect(sx + 1, top + 12, 7, 5, 0xc8b088);
-        g.rect(sx + 2, top + 10, 2, 6, 0xe0cca8);
-        g.rect(sx + 6, top + 13, 2, 5, 0xa08a68);
-        g.rect(sx + 3, top + 8, 3, 2, INK);
-        g.rect(sx + 4, top + 7, 1, 1, 0x8a6a40);
+        g.rect(sx + 1, top + 11, 7, 11, INK);
+        g.rect(sx, top + 13, 9, 7, INK);
+        g.rect(sx + 2, top + 12, 5, 9, 0xc8b088);
+        g.rect(sx + 1, top + 14, 7, 5, 0xc8b088);
+        g.rect(sx + 2, top + 12, 2, 6, 0xe0cca8);
+        g.rect(sx + 6, top + 15, 2, 5, 0xa08a68);
+        g.rect(sx + 3, top + 10, 3, 2, INK);
+        g.rect(sx + 4, top + 9, 1, 1, 0x8a6a40);
         break;
     }
     case 'staff':
@@ -870,10 +890,10 @@ function drawCarry(g, p, f, x, top, flip, env) {
         g.rect(front + 2, top - 13, 2, 2, 0xa8acb4);
         break;
     case 'lute':
-        g.rect(front - 6, top + 14, 8, 7, INK);
-        g.rect(front - 5, top + 15, 6, 5, 0xc8883a);
-        g.px(front - 3, top + 17, INK);
-        g.rect(front + 1, top + 12, 6, 2, 0x8a5a2a);
+        g.rect(front - 6, top + 16, 8, 7, INK);
+        g.rect(front - 5, top + 17, 6, 5, 0xc8883a);
+        g.px(front - 3, top + 19, INK);
+        g.rect(front + 1, top + 14, 6, 2, 0x8a5a2a);
         break;
     case 'bell': {
         // the crier rings a hand bell above his head
@@ -896,17 +916,17 @@ function drawCarry(g, p, f, x, top, flip, env) {
     case 'yoke': {
         // water carrier: a pole over the shoulders, a bucket at each end
         const sx = x + f.w / 2;
-        g.rect(sx - 13, top + 13, 27, 1, 0x6a4a2a);
+        g.rect(sx - 13, top + 15, 27, 1, 0x6a4a2a);
         for (const bx of [sx - 13, sx + 11]) {
-            g.rect(bx + 1, top + 14, 1, 6, 0x5a4a3a);
-            g.rect(bx - 1, top + 20, 5, 6, INK);
-            g.rect(bx, top + 21, 3, 4, 0x8a6a40);
-            g.rect(bx, top + 21, 3, 1, 0x8ac0e8);
+            g.rect(bx + 1, top + 16, 1, 6, 0x5a4a3a);
+            g.rect(bx - 1, top + 22, 5, 6, INK);
+            g.rect(bx, top + 23, 3, 4, 0x8a6a40);
+            g.rect(bx, top + 23, 3, 1, 0x8ac0e8);
         }
         break;
     }
     case 'torch': {
-        g.rect(front + 1, top + 4, 1, 16, 0x6a4a2a);
+        g.rect(front + 1, top + 6, 1, 16, 0x6a4a2a);
         const fl = Math.floor(t * 9) % 3;
         g.rectE(front, top + 1 - fl % 2, 3, 3, 0xffa030);
         g.pxE(front + 1, top - 1 - fl, 0xffe080);
@@ -926,11 +946,11 @@ function drawCarry(g, p, f, x, top, flip, env) {
     }
     case 'hoop': {
         const hx = front + 6;
-        g.rect(hx - 3, top + 22, 7, 1, 0x8a6a40);
-        g.rect(hx - 3, top + 28, 7, 1, 0x8a6a40);
-        g.rect(hx - 4, top + 23, 1, 5, 0x8a6a40);
-        g.rect(hx + 4, top + 23, 1, 5, 0x8a6a40);
-        g.line(front, top + 19, hx, top + 25, 0x6a4a2a);
+        g.rect(hx - 3, top + 24, 7, 1, 0x8a6a40);
+        g.rect(hx - 3, top + 30, 7, 1, 0x8a6a40);
+        g.rect(hx - 4, top + 25, 1, 5, 0x8a6a40);
+        g.rect(hx + 4, top + 25, 1, 5, 0x8a6a40);
+        g.line(front, top + 21, hx, top + 27, 0x6a4a2a);
         break;
     }
     }

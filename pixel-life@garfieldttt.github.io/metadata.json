@@ -8,5 +8,5 @@
     "paypal": "opengamepoint"
   },
   "settings-schema": "org.gnome.shell.extensions.pixel-life",
-  "version-name": "0.2.0"
+  "version-name": "0.2.1"
 }

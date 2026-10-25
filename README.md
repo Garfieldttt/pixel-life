@@ -3,7 +3,7 @@
 A GNOME Shell extension that turns the desktop background into a living
 pixel-art scene in a cozy retro style.
 
-![Village, city, countryside and under the sea](screenshots/overview.png)
+![Village, city, countryside, medieval town, space and under the sea](screenshots/overview.png)
 
 - **Village by the lake (default):** seen from above, with a
   cliff and forest, cottages, a plaza with fountain or well and a market,
@@ -16,6 +16,12 @@ pixel-art scene in a cozy retro style.
   a park with a fountain.
 - **Countryside (side view):** a farm with crops by season, cows, sheep, chickens, a pond
   with ducks, a windmill, a steam train, deer and foxes at dusk.
+- **Medieval town (side view):** a castle on the hill, the town wall and gate,
+  half-timbered houses with shops and guild signs, a church, a tavern and a
+  smithy, market days with stalls, carts, riders and herds. The day follows
+  the church bells: the gate opens at the morning bell, the curfew at nine
+  sends everybody home and the night watchman calls the hours. Maypole,
+  midsummer fire, autumn fair and advent come with the calendar.
 - **Space:** a nebula, a planet whose day side turns with the clock, a ring
   station with docking shuttles, fighter patrols and dogfights, huge cruisers,
   freighters jumping to hyperspace, comets and asteroids.
@@ -26,7 +32,8 @@ pixel-art scene in a cozy retro style.
   swims by or settles on the dome.
 - Day and night follow your clock and calendar, sunrise and sunset fit the
   latitude of your time zone; seasons, weather (rain,
-  storms, snow, fog, rainbows), holidays and many random events.
+  storms, snow, fog, rainbows) with wind in the grass and the trees,
+  holidays and many random events.
 - Sliders for how many people and vehicles are about, from empty to twice as busy.
 - Optional clock overlay: info box, digital or analog.
 - Pauses while a maximized or fullscreen window covers the monitor.
