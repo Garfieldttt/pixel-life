@@ -156,12 +156,13 @@ export function pine(g, x, y, size, season, seed, snow = 0) {
 // ---------------- houses ----------------
 
 // Where doors and windows go, shared by drawing and the dynamic windows.
+// Sized for people about 31px tall.
 export function houseLayout(x, y, w, style, wallH) {
-    const door = {x: Math.round(x + w / 2 - 6), y: y - 20, w: 12, h: 20};
+    const door = {x: Math.round(x + w / 2 - 8), y: y - 34, w: 16, h: 34};
     const wins = [];
-    const ww = 12, wh = 13, wy = y - wallH + (style === 'gable' ? 12 : 9);
+    const ww = 16, wh = 20, wy = y - wallH + (style === 'gable' ? 14 : 12);
     for (const wx of [x + Math.round(w * 0.2) - 4, x + Math.round(w * 0.8) - ww + 4])
-        if (Math.abs(wx + ww / 2 - (door.x + 6)) >= 16)
+        if (Math.abs(wx + ww / 2 - (door.x + 8)) >= 22)
             wins.push({x: wx, y: wy, w: ww, h: wh});
     return {door, wins};
 }
@@ -254,19 +255,21 @@ export function house(g, x, y, w, opts) {
 
 // ---------------- props ----------------
 
+// A post well above head height of the people.
 export function lampPost(g, x, y) {
+    const P = 48;
     g.blend(x - 4, y - 2, 9, 3, 0x0a0818, 0.3);
-    g.rect(x - 2, y - 30, 4, 30, INK);
-    g.rect(x - 1, y - 30, 2, 30, 0x3a3a48);
-    g.px(x - 1, y - 30, 0x6a6a7a);
+    g.rect(x - 2, y - P, 4, P, INK);
+    g.rect(x - 1, y - P, 2, P, 0x3a3a48);
+    g.px(x - 1, y - P, 0x6a6a7a);
     g.rect(x - 4, y - 4, 8, 4, INK);
     g.rect(x - 3, y - 3, 6, 3, 0x3a3a48);
-    g.rect(x - 5, y - 40, 10, 11, INK);
-    g.rect(x - 4, y - 39, 8, 9, 0x2a2a38);
-    g.rect(x - 3, y - 37, 6, 6, 0xd8d0b0);
-    g.rect(x - 6, y - 42, 12, 3, INK);
-    g.rect(x - 5, y - 41, 10, 1, 0x5a5a6a);
-    return [x - 3, y - 37, 6, 6];
+    g.rect(x - 5, y - P - 10, 10, 11, INK);
+    g.rect(x - 4, y - P - 9, 8, 9, 0x2a2a38);
+    g.rect(x - 3, y - P - 7, 6, 6, 0xd8d0b0);
+    g.rect(x - 6, y - P - 12, 12, 3, INK);
+    g.rect(x - 5, y - P - 11, 10, 1, 0x5a5a6a);
+    return [x - 3, y - P - 7, 6, 6];
 }
 
 export function bench(g, x, y, R = A.ramp(0x9a6a40)) {

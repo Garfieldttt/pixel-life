@@ -923,10 +923,10 @@ export class Deep {
                     g.disc(x + (k % 2) * 3, deck - 3 - Math.floor(k / 2) * 3, 3, k % 2 ? 0x4a8a3a : 0x5aa048);
         // lamp posts
         for (const lx of this.lamps) {
-            g.rect(lx, deck - 22, 2, 22, INK);
-            g.rect(lx - 2, deck - 25, 6, 4, BRASS[2]);
+            g.rect(lx, deck - 44, 2, 44, INK);
+            g.rect(lx - 2, deck - 47, 6, 4, BRASS[2]);
             if (on)
-                g.rectE(lx - 1, deck - 24, 4, 2, 0xfff0b0);
+                g.rectE(lx - 1, deck - 46, 4, 2, 0xfff0b0);
         }
         // central column up to the top of the dome
         g.rect(cx + Math.round(r * 0.05) - 2, base - r + 4, 5, r - 4 - 40, BRASS[1]);
@@ -990,10 +990,10 @@ export class Deep {
         g.rect(x - 2, top, w + 4, 3, BRASS[2]);
         g.rect(x - 2, top, w + 4, 1, BRASS[4]);
         g.rect(x - 2, deck - 3, w + 4, 3, BRASS[1]);
-        for (let y = top + 9; y < deck - 22; y += 14)
+        for (let y = top + 9; y < deck - 50; y += 14)
             this._porthole(g, hx, y, 3, on, 3);
         for (const sx of [x + 5, x + w - 6])
-            this._porthole(g, sx, deck - 30, 2, on, 5);
+            this._porthole(g, sx, deck - 44, 2, on, 5);
         // cupola
         const cr = Math.round(w / 2) + 1, PAT = [0x1e4a44, 0x2e6a5e, 0x48907c, 0x70b49a, 0xa8d8c0];
         for (let yy = 0; yy < cr; yy++) {
@@ -1009,7 +1009,7 @@ export class Deep {
             g.rect(hx + i, top - Math.round(Math.sqrt(cr * cr - i * i)) + 1, 1, Math.round(Math.sqrt(cr * cr - i * i)) - 1, PAT[1]);
         g.rect(hx - 1, top - cr - 9, 2, 9, BRASS[2]);
         g.disc(hx, top - cr - 10, 2, BRASS[3]);
-        this._hatch(g, hx - 6, deck - 3, 12, 17);
+        this._hatch(g, hx - 8, deck - 3, 16, 34);
     }
 
     // a long riveted copper hall under a ribbed barrel roof with the big
@@ -1045,7 +1045,7 @@ export class Deep {
         g.rect(wx, wy - wr, 1, wr * 2 + 1, BRASS[1]);
         // small portholes, door, pipe with a vent and a pressure gauge
         this._porthole(g, x + w - 7, top + 8, 2, on, 7);
-        this._hatch(g, x + 5, deck - 3, 11, 16);
+        this._hatch(g, x + 6, deck - 3, 16, 34);
         const px = x + w - 4;
         g.rect(px - 1, top - rh - 8, 4, h + rh + 5, INK);
         g.rect(px, top - rh - 7, 2, h + rh + 4, BRASS[2]);
@@ -1724,7 +1724,7 @@ export class Deep {
             this._renderKrakenShadow(g, this.kraken);
         if (env.lampsOn) {
             for (const lx of this.lamps)
-                g.glow(lx + 1, this.deck - 23, 16, 0xffd890, 0.25);
+                g.glow(lx + 1, this.deck - 45, 16, 0xffd890, 0.25);
             // warm light inside the glass, strongest near the deck
             const {x: cx, r, base} = this.dome;
             for (let y = base - r + 2; y < this.deck; y += 2) {

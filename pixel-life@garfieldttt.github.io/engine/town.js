@@ -10,7 +10,8 @@ import {makeVehicle, drawVehicle, vehicleLength, CITY_TRAFFIC, randomTraffic} fr
 import {drawFigure} from './figure.js';
 import {Timers} from './timers.js';
 
-const FH = 30, GH = 36;
+// storeys and doors sized for people about 31px tall
+const FH = 44, GH = 52;
 const hash = (x, y) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 1000;
 const INK = A.INK;
 
@@ -104,27 +105,27 @@ export class Town {
             const frame = A.ramp(pick(FRAMES));
             b.frameR = frame;
             if (kind === 'cottage') {
-                b.w = randi(80, 100);
+                b.w = randi(112, 136);
                 b.floors = 1;
-                b.wallH = 50;
+                b.wallH = 72;
                 b.mat = pick(['planks', 'planks', 'siding', 'stone']);
                 b.roofH = Math.floor(b.w * 0.5);
                 b.top = this.base - b.wallH;
             } else if (kind === 'townhouse') {
-                b.w = randi(76, 104);
+                b.w = randi(104, 140);
                 b.floors = randi(1, 2);
                 b.mat = pick(['stone', 'brick', 'plaster', 'siding']);
                 b.wallH = GH + b.floors * FH;
-                b.roofH = 26;
+                b.roofH = 34;
                 b.top = this.base - b.wallH;
             } else if (kind === 'apartment') {
-                b.w = randi(96, 124);
+                b.w = randi(128, 164);
                 b.floors = Math.min(maxFloors, randi(3, 6));
                 b.mat = pick(['brick', 'plaster', 'brick', 'stone']);
                 b.wallH = GH + b.floors * FH;
                 b.top = this.base - b.wallH;
             } else {
-                b.w = randi(84, 104);
+                b.w = randi(112, 140);
                 b.floors = Math.min(maxFloors, randi(6, 10));
                 b.mat = 'glass';
                 b.wallH = GH + b.floors * FH;
@@ -141,15 +142,15 @@ export class Town {
                 b.shop.guests = [];
             }
             // windows per floor
-            const cols = Math.max(1, Math.floor((w - 8) / 26));
+            const cols = Math.max(1, Math.floor((w - 8) / 34));
             const span = w / cols;
-            const winW = b.mat === 'glass' ? 18 : 16, winH = 18;
+            const winW = b.mat === 'glass' ? 24 : 20, winH = 26;
             const floorsY = [];
             if (kind === 'cottage')
-                floorsY.push(this.base - b.wallH + 10);
+                floorsY.push(this.base - b.wallH + 14);
             else
                 for (let f = 0; f < b.floors; f++)
-                    floorsY.push(b.top + 6 + f * FH);
+                    floorsY.push(b.top + 8 + f * FH);
             floorsY.forEach((fy, f) => {
                 let hh = new Household();
                 for (let c = 0; c < cols; c++) {
@@ -170,15 +171,15 @@ export class Town {
             if (kind === 'cottage') {
                 // cottage windows sit left and right of the door
                 b.wins.forEach((win, i) => {
-                    win.x = i === 0 ? x + 10 : x + w - 26;
+                    win.x = i === 0 ? x + 14 : x + w - 34;
                 });
                 if (b.wins.length > 2)
                     b.wins.length = 2;
-                b.attic = new Win(Math.floor(x + w / 2) - 7, this.base - b.wallH - Math.floor(b.roofH * 0.55), 14, 12, b.wins[0].hh, 'bed');
+                b.attic = new Win(Math.floor(x + w / 2) - 9, this.base - b.wallH - Math.floor(b.roofH * 0.55), 18, 16, b.wins[0].hh, 'bed');
                 b.attic.frameR = frame;
             }
             // ground floor
-            const doorW = 16, doorH = 28;
+            const doorW = 20, doorH = 38;
             const doorX = b.shop ? x + w - doorW - 8 : Math.floor(x + w / 2 - doorW / 2);
             b.door = {x: doorX, y: this.base - doorH, w: doorW, h: doorH, open: 0, color: A.ramp(pick([0x8a4a30, 0x9a3a30, 0x3a6a5a, 0x4a5a8a, 0x6a4a30]))};
             this.doors.push(b.door);
@@ -186,8 +187,8 @@ export class Town {
                 const hh = new Household();
                 for (let c = 0; c < cols; c++) {
                     const wx = Math.floor(x + span * c + (span - winW) / 2);
-                    if (Math.abs(wx + winW / 2 - (doorX + doorW / 2)) > 22) {
-                        const win = new Win(wx, this.base - GH + 8, winW, winH, hh, b.mat === 'glass' ? 'office' : 'living', b.mat === 'glass' ? 'office' : 'home');
+                    if (Math.abs(wx + winW / 2 - (doorX + doorW / 2)) > 28) {
+                        const win = new Win(wx, this.base - GH + 12, winW, winH, hh, b.mat === 'glass' ? 'office' : 'living', b.mat === 'glass' ? 'office' : 'home');
                         win.frameR = frame;
                         b.wins.push(win);
                         this.windows.push(win);
@@ -524,8 +525,8 @@ export class Town {
 
     _drawShopFront(g, b, env) {
         const s = b.shop;
-        const x = b.x + 6, w = b.w - 34, y = this.base - GH + 2;
-        s.win = {x: x + 2, y: y + 9, w: w - 4, h: 20};
+        const x = b.x + 6, w = b.w - 40, y = this.base - GH + 2;
+        s.win = {x: x + 2, y: y + 10, w: w - 4, h: GH - 18};
         const fr = A.ramp(s.c);
         g.rect(x - 1, y + 5, w + 2, GH - 7, INK);
         g.rect(x, y + 6, w, GH - 9, fr[2]);
@@ -1848,7 +1849,7 @@ export class Town {
             g.rect(x, y, w, wh, open ? 0xf0e0c0 : inside);
         // shelves with goods
         const shelf = A.ramp(0x9a6a40);
-        for (const sy of [y + 7, y + wh - 4]) {
+        for (const sy of [y + 9, y + Math.round(wh / 2) + 3, y + wh - 4]) {
             g.rect(x, sy, w, 2, shelf[1]);
             for (let i = 2; i < w - 2; i += 4) {
                 const gx = x + i, gy = sy;
@@ -1875,8 +1876,8 @@ export class Town {
             const sx = x + 4 + Math.floor((Math.sin(this.realT * 0.4) * 0.5 + 0.5) * (w - 14));
             const sil = night ? mix(inside, 0x2a1830, 0.75) : 0x6a5a5a;
             const R = night ? (a, b2, c, d) => g.rectE(a, b2, c, d, sil) : (a, b2, c, d) => g.rect(a, b2, c, d, sil);
-            R(sx + 1, y + 3, 4, 4);
-            R(sx, y + 7, 6, wh - 9);
+            R(sx + 1, y + 4, 6, 6);
+            R(sx, y + 10, 8, wh - 12);
         }
         // window bars and glare
         g.rect(x + Math.floor(w / 2), y, 2, wh, A.INK);

@@ -205,9 +205,10 @@ export class Farm {
                 this.forest.push({x, s: randi(8, 12), pine: chance(0.6), seed: randi(0, 1e6)});
         // farm
         const G = this.G;
-        this.house = {x: mx(16, 104), w: 104, wallH: 44, roofH: 40};
-        this.barn = {x: mx(130, 90), w: 90, h: 56};
-        this.silo = {x: mx(226, 24), w: 24, h: 84};
+        // buildings sized for people about 31px tall
+        this.house = {x: mx(16, 130), w: 130, wallH: 62, roofH: 48};
+        this.barn = {x: mx(158, 112), w: 112, h: 76};
+        this.silo = {x: mx(282, 30), w: 30, h: 112};
         const hh = new Household();
         hh.kind = 'farmer';
         hh.wake = rand(5, 5.8);
@@ -216,21 +217,21 @@ export class Farm {
         hh.back = 7;
         this.hh = hh;
         const fr = A.ramp(0x9a5a30);
-        const wy = G - this.house.wallH + 12;
+        const wy = G - this.house.wallH + 14;
         this.wins = [
-            new Win(this.house.x + 12, wy, 16, 18, hh, 'kitchen'),
-            new Win(this.house.x + this.house.w - 28, wy, 16, 18, hh, 'living'),
-            new Win(this.house.x + this.house.w / 2 - 7, G - this.house.wallH - 26, 14, 12, hh, 'bed'),
+            new Win(this.house.x + 14, wy, 20, 26, hh, 'kitchen'),
+            new Win(this.house.x + this.house.w - 34, wy, 20, 26, hh, 'living'),
+            new Win(this.house.x + this.house.w / 2 - 9, G - this.house.wallH - 32, 18, 16, hh, 'bed'),
         ];
         for (const w of this.wins)
             w.frameR = fr;
-        this.houseDoor = {x: this.house.x + this.house.w / 2 - 8, open: 0};
+        this.houseDoor = {x: this.house.x + this.house.w / 2 - 9, open: 0};
         // crops in front of the farm buildings
         const fieldW = Math.min(200, Math.floor(W * 0.32));
         this.field = {x: mx(96, fieldW), w: fieldW, y1: G + 14, y2: this.roadTop - 8, crops: pick(['pumpkin', 'cauliflower', 'corn', 'tomato', 'melon']), seed: randi(0, 1e6)};
         // pasture
         const pw = Math.min(220, Math.floor(W * 0.36));
-        const px1 = Math.min(W - pw - 10, 270);
+        const px1 = Math.min(W - pw - 10, 330);
         this.pasture = {x1: mx(px1, pw), x2: mx(px1, pw) + pw, y1: G - 40, y2: G + 4};
         const pondW = Math.min(160, Math.floor(W * 0.14));
         this.pond = {x: this.flip ? 30 : W - pondW - 30, y: G + 18, w: pondW, h: 40};
@@ -545,16 +546,17 @@ export class Farm {
         const roofR = snow ? A.ramp(0xe8eef8) : A.ramp(0x5a3a3a);
         g.rect(b.x - 1, G - b.h, b.w + 2, b.h, INK);
         A.wallPlanks(g, b.x, G - b.h, b.w, b.h, red, 5);
-        A.slopeRoof(g, b.x, G - b.h - 22, b.w, 22, roofR, 6, 6);
-        const dx = b.x + b.w / 2 - 16;
-        g.rect(dx - 2, G - 34, 36, 34, INK);
-        g.rect(dx - 1, G - 33, 34, 33, 0xf4ece0);
-        g.rect(dx + 1, G - 31, 30, 31, red[1]);
-        for (const [x0, y0, x1, y1] of [[dx + 1, G - 31, dx + 30, G - 1], [dx + 30, G - 31, dx + 1, G - 1]]) {
+        A.slopeRoof(g, b.x, G - b.h - 28, b.w, 28, roofR, 6, 6);
+        // big sliding doors, tall enough for a tractor
+        const dx = b.x + b.w / 2 - 22, bdH = 50;
+        g.rect(dx - 2, G - bdH, 48, bdH, INK);
+        g.rect(dx - 1, G - bdH + 1, 46, bdH - 1, 0xf4ece0);
+        g.rect(dx + 1, G - bdH + 3, 42, bdH - 3, red[1]);
+        for (const [x0, y0, x1, y1] of [[dx + 1, G - bdH + 3, dx + 21, G - 1], [dx + 21, G - bdH + 3, dx + 1, G - 1], [dx + 23, G - bdH + 3, dx + 42, G - 1], [dx + 42, G - bdH + 3, dx + 23, G - 1]]) {
             g.line(x0, y0, x1, y1, 0xf4ece0);
             g.line(x0 + 1, y0, x1 + 1, y1, 0xf4ece0);
         }
-        g.rect(dx + 15, G - 31, 2, 31, 0xf4ece0);
+        g.rect(dx + 21, G - bdH + 3, 2, bdH - 3, 0xf4ece0);
         g.rect(b.x + b.w / 2 - 8, G - b.h + 4, 16, 14, INK);
         g.rect(b.x + b.w / 2 - 7, G - b.h + 5, 14, 12, 0xf4ece0);
         g.rect(b.x + b.w / 2 - 5, G - b.h + 7, 10, 8, 0x3a2420);
@@ -597,13 +599,13 @@ export class Farm {
             }
         }
         const d = this.houseDoor;
-        A.door(g, d.x, G - 28, 16, 28, A.ramp(0x8a4a30), 1);
+        A.door(g, d.x, G - 38, 18, 38, A.ramp(0x8a4a30), 1);
         // porch roof and posts
-        g.rect(d.x - 12, G - 36, 40, 4, INK);
-        g.rect(d.x - 11, G - 35, 38, 2, roofH[2]);
-        g.rect(d.x - 10, G - 32, 2, 32, INK);
-        g.rect(d.x + 24, G - 32, 2, 32, INK);
-        g.rect(d.x - 7, G - 30, 3, 4, INK);
+        g.rect(d.x - 12, G - 46, 42, 4, INK);
+        g.rect(d.x - 11, G - 45, 40, 2, roofH[2]);
+        g.rect(d.x - 10, G - 42, 2, 42, INK);
+        g.rect(d.x + 26, G - 42, 2, 42, INK);
+        g.rect(d.x - 7, G - 40, 3, 4, INK);
         // mailbox, shipping bin and well
         const mbx = H.x + H.w + 4;
         g.rect(mbx, G - 12, 2, 12, 0x6a4a30);
@@ -615,7 +617,7 @@ export class Farm {
         g.rect(sbx, G - 3, 20, 12, A.ramp(0x9a6a40)[2]);
         g.rect(sbx, G - 3, 20, 2, A.ramp(0x9a6a40)[3]);
         // dog house
-        const dh = this.houseDoor.x + 34;
+        const dh = this.houseDoor.x + 40;
         const dr = A.ramp(0xc85a3a);
         g.rect(dh - 1, G - 16, 22, 16, INK);
         g.rect(dh, G - 15, 20, 15, A.ramp(0x9a6a40)[2]);
@@ -1162,11 +1164,11 @@ export class Farm {
         for (const w of this.wins)
             w.render(g, env);
         if (this.houseDoor.open > 0)
-            g.rectE(this.houseDoor.x + 1, this.G - 27, 14, 27, env.dark > 0.4 ? 0xffd890 : 0x3a2a24);
+            g.rectE(this.houseDoor.x + 1, this.G - 37, 16, 37, env.dark > 0.4 ? 0xffd890 : 0x3a2a24);
         if (env.lampsOn) {
             const d = this.houseDoor;
-            g.rectE(d.x - 7, this.G - 29, 2, 2, 0xffd890);
-            g.glow(d.x - 6, this.G - 28, 22, 0xffc870, 0.35);
+            g.rectE(d.x - 7, this.G - 39, 2, 2, 0xffd890);
+            g.glow(d.x - 6, this.G - 38, 22, 0xffc870, 0.35);
         }
         // chickens, dog, cat, farmer
         if (env.dark < 0.55) {
@@ -1176,7 +1178,7 @@ export class Farm {
             }
             drawFigure(g, dogFigure(this.dog, Math.floor(t * 5)), this.dogX, this.G + 4, this.dogDir < 0);
         } else {
-            drawFigure(g, dogFigure(this.dog, 0), this.houseDoor.x + 36, this.G + 2, false);
+            drawFigure(g, dogFigure(this.dog, 0), this.houseDoor.x + 42, this.G + 2, false);
         }
         if (env.dark > 0.3 || Math.sin(t * 0.05) > 0.4)
             drawFigure(g, catFigure(this.cat, 'sit'), this.houseDoor.x - 18, this.G - 1, false);

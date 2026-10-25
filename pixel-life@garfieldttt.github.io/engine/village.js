@@ -57,8 +57,8 @@ export class Village extends World {
             ter.rect(sx, 0, 2, ch, T.PATH);
         }
         this.stairs = stairs;
-        const houseTop = ch + 2, houseBase = ch + 8;
-        const mainY = ch + 10;
+        const houseTop = ch + 2, houseBase = ch + 9;
+        const mainY = ch + 11;
         this.mainY = mainY;
         ter.rect(0, mainY, C, 2, T.PATH);
         // lake along the bottom with an organic shoreline (per pixel)
@@ -122,7 +122,7 @@ export class Village extends World {
         // houses under the cliff
         let hx = randi(1, 3);
         while (hx < C - 6) {
-            const wT = randi(6, 8);
+            const wT = randi(7, 9);
             if (stairs.some(s => s + 2 > hx - 1 && s < hx + wT + 1)) {
                 hx += 2;
                 continue;
@@ -154,7 +154,7 @@ export class Village extends World {
         this._lampsAt = [];
         for (const [lx, ly] of [[px, py], [px + pw - 1, py], [px, py + ph - 1], [px + pw - 1, py + ph - 1]]) {
             const x = lx * TILE + 8, y = ly * TILE + 14;
-            this.add(y, g => O.lampPost(g, x, y), [x - 8, y - 44, 16, 46], [lx, ly, 1, 1]);
+            this.add(y, g => O.lampPost(g, x, y), [x - 8, y - 62, 16, 64], [lx, ly, 1, 1]);
             this._lampsAt.push([x, y]);
         }
         // benches on the plaza
@@ -178,7 +178,7 @@ export class Village extends World {
                 continue;
             mark(x, mainY - 1, 1, 1);
             const lx = x * TILE + 8, ly = (mainY - 1) * TILE + 14;
-            this.add(ly, g => O.lampPost(g, lx, ly), [lx - 8, ly - 44, 16, 46], [x, mainY - 1, 1, 1]);
+            this.add(ly, g => O.lampPost(g, lx, ly), [lx - 8, ly - 62, 16, 64], [x, mainY - 1, 1, 1]);
             this._lampsAt.push([lx, ly]);
         }
         // braziers by the pier
@@ -294,7 +294,7 @@ export class Village extends World {
         const wallR = A.ramp(pick(WALLS[mat])), roofR = A.ramp(pick(ROOFS)), frameR = A.ramp(pick([0x9a5a30, 0xf0ece0, 0x5a6a7a, 0x3a5a4a]));
         const seed = randi(0, 1e6), doorColor = pick([0x8a4a30, 0x9a3a30, 0x3a6a5a, 0x4a5a8a]);
         const style = chance(0.5) ? 'gable' : 'hip';
-        const wallH = style === 'gable' ? 48 : 46, roofH = style === 'gable' ? Math.min(52, Math.round(w * 0.42)) : 36;
+        const wallH = style === 'gable' ? 64 : 60, roofH = style === 'gable' ? Math.min(60, Math.round(w * 0.42)) : 44;
         const hh = new Household();
         this.add(y, (g, e) => O.house(g, x, y, w, {wallH, roofH, wallR, roofR, mat, seed, frameR, doorColor, style, season: this._season(e)}),
             [x - 14, y - wallH - roofH - 14, w + 28, wallH + roofH + 18], [tx, top, wT, base - top]);
@@ -306,13 +306,13 @@ export class Village extends World {
         }
         this.chimneys = this.chimneys || [];
         this.chimneys.push([x + Math.round(w * 0.72) + 4, y - wallH - roofH - (style === 'gable' ? -6 : 6)]);
-        const doorX = Math.round(x + w / 2 - 6);
-        const doorTile = Math.floor((doorX + 6) / TILE);
+        const doorX = L.door.x;
+        const doorTile = Math.floor((doorX + 8) / TILE);
         this.terrain.rect(doorTile, base, 1, mainY - base, T.PATH);
-        this.doors.push({x: doorX, y, w: 12, h: 20, tx: doorTile, ty: base, open: 0, lamp: [doorX + 17, y - 16]});
+        this.doors.push({x: doorX, y, w: L.door.w, h: L.door.h, tx: doorTile, ty: base, open: 0, lamp: [doorX + L.door.w + 5, y - 30]});
         // flower pots by the door
-        for (const dx of [-14, 14]) {
-            const px2 = doorX + 6 + dx - 4, py2 = y + 12;
+        for (const dx of [-18, 18]) {
+            const px2 = doorX + 8 + dx - 4, py2 = y + 12;
             const c = pick([0xe84860, 0xf8d048, 0xf0f0f0, 0xb860d8]);
             this.add(py2, (g, e) => O.flowerPot(g, px2, py2, c, this._season(e)), [px2 - 6, py2 - 22, 22, 24]);
         }
@@ -908,8 +908,8 @@ export class Village extends World {
         // lights
         if (env.lampsOn) {
             for (const [x, y] of this._lampsAt) {
-                g.rectE(x - 3, y - 37, 6, 6, 0xfff0c0);
-                g.glow(x, y - 34, 16, 0xffe0a0, 0.35);
+                g.rectE(x - 3, y - 55, 6, 6, 0xfff0c0);
+                g.glow(x, y - 52, 16, 0xffe0a0, 0.35);
                 g.glow(x, y - 2, 30, 0xffd890, 0.22, 0.45);
             }
         }
