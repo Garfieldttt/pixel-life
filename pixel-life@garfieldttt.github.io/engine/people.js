@@ -244,7 +244,7 @@ export function makeMedieval(env, opts = {}) {
 }
 
 // frame: 0 stand, 1 step, 2 pass, 3 other step; 'sit' for sitting
-function buildPerson(p, frame) {
+function buildPerson(p, frame, blink = false) {
     const kid = p.kid;
     const W = 16, H = kid ? 24 : 31;
     const c = new Cells(W, H + 3);
@@ -264,9 +264,14 @@ function buildPerson(p, frame) {
     c.rect(hx + 2, hy + 2, 9, headH - 2, skin);
     c.rect(hx + 3, hy + headH, 7, 1, skin);
     c.rect(hx + 2, hy + headH - 2, 2, 2, skinS);
-    c.set(hx + 8, hy + 5, INK);
-    c.set(hx + 8, hy + 6, INK);
-    c.set(hx + 9, hy + 5, 0x6a4a5a);
+    if (blink) {
+        c.set(hx + 8, hy + 6, INK);
+        c.set(hx + 9, hy + 6, sh(skin, 0.3));
+    } else {
+        c.set(hx + 8, hy + 5, INK);
+        c.set(hx + 8, hy + 6, INK);
+        c.set(hx + 9, hy + 5, 0x6a4a5a);
+    }
     if (p.blush)
         c.set(hx + 7, hy + 8, 0xf09a9a);
     c.set(hx + 10, hy + 8, sh(skin, 0.35));
@@ -401,6 +406,12 @@ function buildPerson(p, frame) {
     // ---- body
     const by = hy + headH + 1;
     const bodyH = kid ? 6 : 8;
+    // the far arm swings the other way, mostly behind the body
+    if (frame !== 'sit' && !p.umbrella) {
+        const back = frame === 1 ? -3 : frame === 3 ? 3 : 0;
+        c.rect(hx + 3 + back, by + 1, 3, bodyH - 3, sh(shirt, 0.35));
+        c.rect(hx + 3 + back, by + bodyH - 2, 3, 2, skinS);
+    }
     c.rect(hx + 2, by, 9, bodyH, shirt);
     c.rect(hx + 2, by, 1, bodyH, shirtH);
     c.rect(hx + 9, by, 2, bodyH, shirtS);
@@ -520,7 +531,7 @@ function buildPerson(p, frame) {
 }
 
 // Front ('down') and back ('up') views.
-function buildPersonFB(p, frame, face) {
+function buildPersonFB(p, frame, face, blink = false) {
     const kid = p.kid;
     const H = kid ? 24 : 31;
     const c = new Cells(16, H + 3);
@@ -550,8 +561,8 @@ function buildPersonFB(p, frame, face) {
         if (p.style === 'long' || p.style === 'pony' || p.style === 'bob')
             c.rect(hx + 1, hy + 8, 10, p.style === 'bob' ? 2 : 5, hairS);
     } else {
-        c.rect(hx + 3, hy + 4, 1, 2, INK);
-        c.rect(hx + 8, hy + 4, 1, 2, INK);
+        c.rect(hx + 3, hy + (blink ? 5 : 4), 1, blink ? 1 : 2, INK);
+        c.rect(hx + 8, hy + (blink ? 5 : 4), 1, blink ? 1 : 2, INK);
         c.set(hx + 3, hy + 4, 0x6a4a5a);
         c.set(hx + 8, hy + 4, 0x6a4a5a);
         if (p.blush) {
@@ -641,14 +652,14 @@ function buildPersonFB(p, frame, face) {
     return c.finish(INK);
 }
 
-export function personFigure(p, frame, face = 'side') {
+export function personFigure(p, frame, face = 'side', blink = false) {
     if (face !== 'side' && frame !== 'sit') {
         // frame 4 is a front view wave with the right arm raised
-        const fr = frame === 4 ? 4 : frame % 4, k = face + fr;
-        return p.frames[k] || (p.frames[k] = buildPersonFB(p, fr, face));
+        const fr = frame === 4 ? 4 : frame % 4, k = face + fr + (blink ? 'b' : '');
+        return p.frames[k] || (p.frames[k] = buildPersonFB(p, fr, face, blink));
     }
-    const k = frame === 'sit' ? 'sit' : frame % 4;
-    return p.frames[k] || (p.frames[k] = buildPerson(p, k));
+    const k = (frame === 'sit' ? 'sit' : frame % 4) + (blink ? 'b' : '');
+    return p.frames[k] || (p.frames[k] = buildPerson(p, frame === 'sit' ? 'sit' : frame % 4, blink));
 }
 
 // ---------------- pets ----------------
@@ -741,7 +752,10 @@ export function catFigure(cat, pose) {
 export function drawPerson(g, p, x, y, dir, env, face = 'side') {
     const moving = p.state !== 'wait' && p.state !== 'sit' && p.state !== 'chat' && p.state !== 'crosswait' && p.state !== 'fish' && p.state !== 'idle';
     const frame = p.state === 'sit' ? 'sit' : moving ? Math.floor(p.t * p.speed / 6) % 4 : 0;
-    const f = personFigure(p, frame, face);
+    // everybody blinks now and then
+    p.blinkPh = p.blinkPh ?? Math.random() * 4;
+    const blink = face !== 'up' && (p.t + p.blinkPh) % 3.7 < 0.14;
+    const f = personFigure(p, frame, face, blink);
     const flip = dir < 0;
     const bob = moving && (frame === 1 || frame === 3) ? 1 : 0;
     g.footShadow(x + f.w / 2, y, f.w - 4, 0.3);

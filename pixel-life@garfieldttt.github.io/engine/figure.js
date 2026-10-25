@@ -1,6 +1,6 @@
 // Tiny cell canvas for building outlined sprites procedurally (people,
 // animals, vehicles). Built once per variant and frame, then cached.
-import {OUTLINE} from './gfx.js';
+import {OUTLINE, isOutline, outlineOf} from './gfx.js';
 
 export class Cells {
     constructor(w, h) {
@@ -53,9 +53,11 @@ export class Cells {
                 const c = this.get(x - 1, y - 1);
                 if (c >= 0) {
                     pts.push(x, y, c);
-                } else if (outline !== null && (this.get(x - 2, y - 1) >= 0 || this.get(x, y - 1) >= 0 ||
-                    this.get(x - 1, y - 2) >= 0 || this.get(x - 1, y) >= 0)) {
-                    pts.push(x, y, outline);
+                } else if (outline !== null) {
+                    const n = [this.get(x - 2, y - 1), this.get(x, y - 1), this.get(x - 1, y - 2), this.get(x - 1, y)].filter(v => v >= 0);
+                    // the plain outline takes a dark shade of what it encloses
+                    if (n.length)
+                        pts.push(x, y, isOutline(outline) ? outlineOf(n) : outline);
                 }
             }
         }

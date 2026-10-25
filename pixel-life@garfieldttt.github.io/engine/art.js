@@ -522,8 +522,8 @@ export const GRASS = {
 
 // Loose grass tufts drawn every frame over the static meadow so they can
 // sway in the wind; spots = [[x, y], ...] of their roots.
-export function makeTufts(spots, seed = 0) {
-    return spots.map(([x, y], i) => ({x: Math.round(x), y: Math.round(y), h: 6 + hash(i, 3, seed) % 4, k: 0.7 + hash(i, 5, seed) / 1600}));
+export function makeTufts(spots, seed = 0, small = false) {
+    return spots.map(([x, y], i) => ({x: Math.round(x), y: Math.round(y), h: (small ? 4 : 6) + hash(i, 3, seed) % (small ? 2 : 4), k: 0.7 + hash(i, 5, seed) / 1600}));
 }
 
 export function drawTufts(g, tufts, season, weather) {
@@ -622,6 +622,90 @@ export function cobble(g, x, y, w, h, R, seed = 0) {
             g.rect(x1, py + 1, x2 - x1, 1, R[4]);
             g.rect(x1, py + hh, x2 - x1, 1, mix(R[1], R[2], 0.5));
         }
+    }
+}
+
+// Irregular flagstone paving: stones of different sizes in rows, each with
+// a lit top edge and a shaded foot, speckled, now and then cracked; moss
+// and grass grow in some joints. mossRate per thousand stones.
+export function flagstones(g, x, y, w, h, R, seed = 0, {mortar = mix(R[1], R[2], 0.35), moss = 0x6a8a44, mossRate = 140} = {}) {
+    g.rect(x, y, w, h, mortar);
+    let py = y;
+    for (let row = 0; py < y + h; row++) {
+        const rh = 6 + hash(row, 1, seed) % 4;
+        let px = x - hash(row, 2, seed) % 14;
+        for (let k = 0; px < x + w; k++) {
+            const id = row * 61 + k;
+            const sw = 10 + hash(id, 3, seed) % 12;
+            // stones sit a little up or down in their row, so the joints
+            // do not run straight like bricks in a wall
+            const jag = hash(id, 12, seed) % 3 - 1;
+            const x1 = Math.max(x, px + 1), x2 = Math.min(x + w, px + sw), y1 = Math.max(y, py + 1 + Math.min(0, jag)), y2 = Math.min(y + h, py + rh + Math.max(0, jag));
+            if (x2 - x1 > 1 && y2 - y1 > 1) {
+                const t = hash(id, 4, seed) % 10;
+                const base = t < 2 ? mix(R[1], R[2], 0.7) : t > 7 ? mix(R[2], R[3], 0.4) : R[2];
+                g.rect(x1, y1, x2 - x1, y2 - y1, base);
+                g.rect(x1 + 1, y1, x2 - x1 - 2, 1, mix(base, R[4], 0.25));
+                g.rect(x1, y2 - 1, x2 - x1, 1, mix(base, R[0], 0.16));
+                const n = Math.floor((x2 - x1) * (y2 - y1) / 12);
+                for (let i = 0; i < n; i++) {
+                    const sx = x1 + hash(i, id, seed + 7) % (x2 - x1), sy = y1 + 1 + hash(i, id, seed + 9) % Math.max(1, y2 - y1 - 2);
+                    g.px(sx, sy, i % 2 ? mix(base, R[0], 0.1) : mix(base, R[4], 0.12));
+                }
+                if (hash(id, 6, seed) < 70) {
+                    // a crack across the stone
+                    let cx = x1 + 2 + hash(id, 8, seed) % Math.max(1, x2 - x1 - 4);
+                    for (let cy = y1 + 1; cy < y2 - 1; cy++) {
+                        g.px(cx, cy, mix(base, R[0], 0.3));
+                        cx += (hash(cy, id, seed) % 3) - 1;
+                    }
+                }
+                if (hash(id, 7, seed) < mossRate) {
+                    // a bit of green in the joint
+                    const my = y1 + hash(id, 10, seed) % Math.max(1, y2 - y1);
+                    g.px(x2, my, moss);
+                    g.px(x2, my + 1, mix(moss, 0x2a3a1a, 0.3));
+                    if (hash(id, 11, seed) < 500)
+                        g.px(x2 - 1, my, mix(moss, 0xc0e070, 0.3));
+                }
+            }
+            px += sw;
+        }
+        py += rh;
+    }
+}
+
+// A shallow puddle seen at a low angle: a rounded sheet of water that
+// mirrors the sky, a darker wet rim and a glint
+export function puddle(g, x, y, w, sky, seed = 0) {
+    const h = Math.max(3, Math.round(w / 5));
+    for (let i = 0; i < h; i++) {
+        const k = 1 - Math.abs((i + 0.5) / h * 2 - 1), half = Math.round(w / 2 * Math.sqrt(k)) + (hash(i, 1, seed) % 2);
+        g.blend(x + w / 2 - half - 1, y + i, half * 2 + 2, 1, 0x2a2430, 0.18);
+        g.blend(x + w / 2 - half, y + i, half * 2, 1, sky, 0.5);
+    }
+    g.blend(x + w / 2 - w / 5, y + 1, Math.max(2, w / 4), 1, 0xffffff, 0.3);
+}
+
+// Where the shadows fall right now: depth (rows) and skew (pixels at the
+// far edge, away from the sun) or null when there is no sun to speak of.
+// Low sun, long shadows; clouds soften them.
+export function sunShadow(env) {
+    const sun = env.sun;
+    if (sun.elev < 2)
+        return null;
+    const depth = Math.max(3, Math.min(14, Math.round(90 / (sun.elev + 6))));
+    const frac = (sun.t - sun.rise) / Math.max(1, sun.set - sun.rise);
+    const skew = Math.round((0.5 - frac) * 2 * depth * 1.4);
+    const a = 0.3 * (1 - env.weather.v.clouds * 0.7);
+    return a < 0.06 ? null : {depth, skew, a: Math.round(a * 20) / 20};
+}
+
+// The shadow a wall standing on y = base casts on the ground in front.
+export function castShadow(g, x, w, base, sh) {
+    for (let k = 0; k < sh.depth; k++) {
+        const s = Math.round(sh.skew * (k + 1) / sh.depth);
+        g.blend(x + s, base + k, w, 1, 0x1a1030, sh.a * (1 - k / sh.depth * 0.45));
     }
 }
 

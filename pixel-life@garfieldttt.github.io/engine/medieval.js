@@ -4,7 +4,7 @@
 // in front. The day follows the church bells: the morning bell opens the
 // gate, shops and market, the curfew bell at nine sends everybody home and
 // leaves the streets to the night watchman. Feast days follow the calendar.
-import {rand, randi, chance, pick, weighted, clamp, steppedLevel, treeSize} from './util.js';
+import {rand, randi, chance, pick, weighted, clamp, steppedLevel} from './util.js';
 import {mix, shadow, highlight} from './gfx.js';
 import * as A from './art.js';
 import {Household, Win} from './windows.js';
@@ -552,6 +552,7 @@ export class Medieval {
         // room enough between them for people to walk around
         const free = (x, w) => !this.props.some(p => x < p.x + p.w + 34 && x + w > p.x - 34);
         const place = (kind, w, extra = {}) => {
+            w = w || {barrels: 26, crates: 24, hay: 28, cart: 52}[kind];
             for (let i = 0; i < 40; i++) {
                 const x = randi(20, W - w - 20);
                 if (free(x, w)) {
@@ -565,12 +566,18 @@ export class Medieval {
         this.well = place('well', 36);
         this.limes = [];
         for (let i = 0; i < Math.max(1, Math.round(W / 700)); i++) {
-            const t = place('tree', 60, {size: treeSize(30, 38), seed: randi(0, 1e6)});
+            const t = place('tree', 60, {size: randi(30, 38), seed: randi(0, 1e6)});
             if (t)
                 this.limes.push(t);
         }
         this.pillory = W >= 640 ? place('pillory', 22) : null;
         this.trough = chance(0.6) ? place('trough', 30) : null;
+        // odds and ends left about the square
+        for (let i = 0; i < Math.max(2, Math.round(W / 300)); i++)
+            place(pick(['barrels', 'crates', 'hay', 'cart']), 0, {seed: randi(0, 1e6)});
+        for (const p of this.props)
+            if (!p.w)
+                p.w = {barrels: 26, crates: 24, hay: 28, cart: 52}[p.kind];
         // stall pitches along the back of the square; how many are used
         // depends on the day
         this.pitches = [];
@@ -581,6 +588,11 @@ export class Medieval {
         for (let i = 0; i < W / 9; i++)
             spots.push([randi(4, W - 4), this.squareBot + randi(8, 16)]);
         this.tufts = A.makeTufts(spots, randi(0, 1e6));
+        // small weeds at the foot of the walls and along the kerbs
+        const weeds = [];
+        for (let i = 0; i < W / 30; i++)
+            weeds.push([randi(4, W - 4), chance(0.5) ? this.base + 1 : chance(0.5) ? this.roadTop - 3 : this.frontTop + 16]);
+        this.weeds = A.makeTufts(weeds, randi(0, 1e6), true);
     }
 
     // ---------- calendar ----------
@@ -622,7 +634,8 @@ export class Medieval {
         const shops = this.buildings.map(b => b.shop && this._shopOpen(b.shop, env, cal) ? 1 : 0).join('');
         const stalls = this._stalls(env, cal).map(p => p.x).join(',');
         const fest = [cal.may, cal.midsummer, cal.fair, cal.advent, env.holidays.halloween].map(v => (v ? 1 : 0)).join('');
-        return [this.darkLevel, env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), this.wetLevel, env.season, shops, stalls, fest].join(':');
+        const sh = A.sunShadow(env);
+        return [this.darkLevel, env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), this.wetLevel, env.season, shops, stalls, fest, sh ? [sh.depth, sh.skew, sh.a] : 0].join(':');
     }
 
     // ---------- static layer ----------
@@ -637,10 +650,18 @@ export class Medieval {
         this.layerA.fill(0);
         g.into(this.layerA, () => {
             this._drawFar(g, env);
+            // what the far land looks like before the town covers it: the
+            // mill sails and castle flags only show where it is still seen
+            this.farSnap = Uint32Array.from(this.layerA);
             this._drawTownWall(g, env);
             for (const b of this.buildings)
                 this._drawBuilding(g, b, env, cal);
             this._drawGround(g, env);
+            // the houses throw their shadow onto the walk
+            const sh = A.sunShadow(env);
+            if (sh)
+                for (const b of this.buildings)
+                    A.castShadow(g, b.x, b.w, this.base + 1, sh);
             if (cal.fair)
                 this._drawBunting(g);
         });
@@ -664,6 +685,8 @@ export class Medieval {
                 add(p.y, [p.x - 6, p.y - 46, p.w + 14, 50], () => this._pillory(g, p));
             else if (p.kind === 'trough')
                 add(p.y, [p.x - 2, p.y - 14, p.w + 4, 16], () => this._trough(g, p, env));
+            else if (['barrels', 'crates', 'hay', 'cart'].includes(p.kind))
+                add(p.y, [p.x - 8, p.y - 34, p.w + 24, 38], () => this._clutter(g, p, env));
         }
         for (const st of this._stalls(env, cal))
             add(this.stallY, [st.x - 8, this.stallY - 56, st.w + 16, 60], () => this._stall(g, st, env), {stall: st});
@@ -1130,7 +1153,7 @@ export class Medieval {
         A.wallStone(g, nx - 5, top - gh, nw + 10, gh + 4, st, b.seed + 9);
         for (let yy = top - gh; yy < top + 4; yy++) {
             const half = span(yy);
-            for (let xx = nx - 5; xx < nx + nw + 5; xx++)
+            for (let xx = Math.max(0, nx - 5); xx < Math.min(this.w, nx + nw + 5); xx++)
                 if (Math.abs(xx + 0.5 - cxn) > half)
                     g.t[yy * this.w + xx] = 0;
         }
@@ -1225,48 +1248,100 @@ export class Medieval {
     _drawGround(g, env) {
         const W = this.w, B = this.base, H = this.h, snow = env.weather.snowCover;
         const season = snow > 0.3 ? 'winter' : env.season;
-        // flagstone walks
-        const flags = (y, h) => {
-            g.rect(0, y, W, h, 0x9a9080);
-            for (let yy = y; yy < y + h; yy += 6)
-                for (let xx = (yy / 6) % 2 ? -8 : 0; xx < W; xx += 16) {
-                    const t = hash(xx, yy, 3) % 3;
-                    g.rect(xx + 1, yy + 1, 15, 5, [0xb0a690, 0xa89e88, 0xb8ae98][t]);
-                    g.rect(xx + 1, yy + 1, 15, 1, 0xc8bea8);
-                }
-        };
-        flags(B, this.roadTop - B);
-        g.rect(0, B, W, 1, 0x7a7060);
-        // the road: cobbles with a gutter down the middle
-        A.cobble(g, 0, this.roadTop, W, this.frontTop - this.roadTop, A.ramp(0x8a7e6a), 11);
-        g.rect(0, this.roadTop, W, 2, 0x6a6052);
-        const gut = this.roadTop + 29;
-        g.rect(0, gut, W, 3, 0x5a5246);
-        g.rect(0, gut + 1, W, 1, this.wetLevel ? mix(0x6a8aa8, env.skyBottom, 0.4) : 0x4a443a);
-        flags(this.frontTop, 16);
-        g.rect(0, this.frontTop, W, 2, 0x6a6052);
-        // the square: lighter cobbles in fans
-        const sq = this.frontTop + 16;
-        g.rect(0, sq, W, this.squareBot - sq, 0xa89a80);
-        for (let yy = sq; yy < this.squareBot; yy += 4)
-            for (let xx = (yy / 4) % 2 ? -3 : 0; xx < W; xx += 6) {
-                const t = hash(xx, yy, 9) % 4;
-                g.rect(xx + 1, yy + 1, 5, 3, [0xb8aa90, 0xb0a288, 0xc4b69c, 0xa89a80][t]);
-                g.px(xx + 1, yy + 1, 0xd0c4aa);
+        const walkR = A.ramp(0xb2a68c), sqR = A.ramp(0xbcae92);
+        // a kerb of long stones
+        const kerb = y => {
+            g.rect(0, y, W, 3, 0x6a6052);
+            for (let x = -hash(y, 1, 4) % 20; x < W; x += 20 + hash(x, y, 4) % 8) {
+                g.rect(x + 1, y, 18 + hash(x, y, 4) % 8, 2, 0x9a907c);
+                g.rect(x + 1, y, 18 + hash(x, y, 4) % 8, 1, 0xb8ae98);
             }
-        // straw and dirt about
-        for (let i = 0; i < W / 14; i++) {
-            const x = hash(i, 1, 5) * W / 1000, y = sq + 4 + hash(i, 2, 5) * (this.squareBot - sq - 8) / 1000;
-            g.rect(x, y, 3, 1, 0xd8c070);
+        };
+        // flagstone walk along the houses, worn at the doors
+        A.flagstones(g, 0, B, W, this.roadTop - B, walkR, 3, {mossRate: 220});
+        g.rect(0, B, W, 1, 0x7a7060);
+        g.blend(0, B + 1, W, 2, 0x1a1028, 0.18);
+        for (const d of this.doors)
+            g.blend(d.x - 4, B + 1, d.w + 8, 8, 0xd8ccb0, 0.25);
+        kerb(this.roadTop - 3);
+        // the road: rounded setts, wheel ruts and a stone gutter in the middle
+        const R = A.ramp(0x8e826c), top = this.roadTop, bot = this.frontTop;
+        g.rect(0, top, W, bot - top, R[0]);
+        let row = 0;
+        for (let py = top; py < bot; py += 5, row++) {
+            for (let px = -(row % 2) * 4, k = 0; px < W; k++) {
+                const sw = 5 + hash(k, row, 12) % 4, x2 = Math.min(W, px + sw), hh = Math.min(4, bot - py - 1);
+                if (hh > 1 && x2 - px > 2) {
+                    const t = hash(k, row, 13) % 12;
+                    const c = t === 0 ? mix(R[2], 0x9a6a5a, 0.35) : t < 3 ? R[1] : t > 9 ? R[3] : R[2];
+                    g.rect(px + 1, py + 1, x2 - px - 1, hh, c);
+                    g.rect(px + 2, py + 1, x2 - px - 3, 1, mix(c, R[4], 0.5));
+                    g.rect(px + 1, py + hh, x2 - px - 1, 1, mix(c, R[0], 0.35));
+                    g.px(px + 1, py + 1, R[0]);
+                    g.px(x2 - 1, py + 1, R[0]);
+                }
+                px += sw;
+            }
         }
+        // ruts where the wheels run, worn smooth and darker
+        for (const l of this.lanes)
+            for (const dy of [-3, 3]) {
+                g.blend(0, l.y + dy - 1, W, 3, 0x3a3028, 0.18);
+                g.blend(0, l.y + dy - 1, W, 1, 0xfff0d0, 0.08);
+            }
+        const gut = top + 29;
+        g.rect(0, gut - 1, W, 5, 0x6a6050);
+        g.rect(0, gut, W, 3, 0x4e463a);
+        g.rect(0, gut - 1, W, 1, 0x9a907c);
+        g.rect(0, gut + 1, W, 1, this.wetLevel ? mix(0x6a8aa8, env.skyBottom, 0.4) : 0x3e382e);
+        for (let x = hash(1, 2, 3) % 40; x < W; x += 30 + hash(x, 1, 3) % 50)
+            g.px(x, gut + 2, 0x5a8a34);
+        // straw and hay blown about, a few bits of dung
+        for (let i = 0; i < W / 18; i++) {
+            const x = hash(i, 1, 5) * W / 1000, y = top + 3 + hash(i, 2, 5) * (bot - top - 6) / 1000;
+            if (i % 5)
+                g.rect(x, y, 3, 1, i % 2 ? 0xd8c070 : 0xc8a858);
+            else
+                g.rect(x, y, 2, 1, 0x5a4428);
+        }
+        kerb(this.frontTop);
+        A.flagstones(g, 0, this.frontTop + 3, W, 13, walkR, 5, {mossRate: 180});
+        // the market square: bigger, paler slabs inside a border of dark stones
+        const sq = this.frontTop + 16;
+        A.flagstones(g, 0, sq + 3, W, this.squareBot - sq - 3, sqR, 9, {mossRate: 90});
+        g.rect(0, sq, W, 3, 0x7a705e);
+        for (let x = 0; x < W; x += 7) {
+            g.rect(x + 1, sq, 5, 2, 0x948a76);
+            g.px(x + 1, sq, 0xaaa08a);
+        }
+        // trodden paler in front of the stall pitches
+        g.blend(0, this.stallY + 2, W, 10, 0xe8dcc0, 0.16);
+        // a ring of setts round the well and an iron drain grate
+        if (this.well) {
+            const cx = this.well.x + this.well.w / 2, cy = this.well.y - 2;
+            for (let a = 0; a < Math.PI * 2; a += 0.12) {
+                const rx = this.well.w * 0.85, ry = 9;
+                const x = Math.round(cx + Math.cos(a) * rx), y = Math.round(cy + Math.sin(a) * ry);
+                g.rect(x - 1, y - 1, 3, 2, 0x8a806c);
+                g.px(x - 1, y - 1, 0xa89e88);
+            }
+        }
+        const [dx] = this._freePoint();
+        const dy = this.squareBot - 10;
+        g.rect(dx, dy, 10, 5, 0x3a3436);
+        for (let i = 1; i < 10; i += 2)
+            g.rect(dx + i, dy + 1, 1, 3, 0x1e1a1c);
+        g.rect(dx, dy, 10, 1, 0x6a6466);
         if (this.wetLevel)
-            for (let i = 0; i < W / 70; i++) {
-                const x = hash(i, 4, 6) * W / 1000, y = (i % 2 ? this.roadTop + 8 : sq + 10) + hash(i, 5, 6) % 30;
-                g.blend(x, y, 18, 3, env.skyBottom, 0.4);
+            for (let i = 0; i < W / 60; i++) {
+                const x = hash(i, 4, 6) * W / 1000, y = (i % 2 ? this.lanes[i % 2].y - 3 : sq + 12 + hash(i, 5, 6) % 50);
+                A.puddle(g, x, y, 16 + hash(i, 7, 6) % 14, env.skyBottom, i);
             }
         if (snow > 0.15) {
             g.blend(0, B, W, H - B, 0xf4f8ff, Math.min(0.85, snow));
             g.blend(0, gut - 6, W, 14, 0x8a8478, 0.25 * snow);
+            for (const l of this.lanes)
+                g.blend(0, l.y - 5, W, 8, 0x8a8478, 0.3 * snow);
         }
         // a stone kerb and a strip of grass along the bottom
         g.rect(0, this.squareBot, W, 3, INK);
@@ -1341,6 +1416,48 @@ export class Medieval {
                     continue;
                 g.px(xx, yy, hole ? 0x2a1e16 : edge ? INK : yy === y - 30 ? 0xa8703e : yy < y - 26 ? 0x8a5a32 : 0x7a4a2a);
             }
+    }
+
+    // barrels, a stack of crates, a hay bale or a cart left standing
+    _clutter(g, p, env) {
+        const x = p.x, y = p.y, snow = env.weather.snowCover > 0.3;
+        g.footShadow(x + p.w / 2, y, p.w + 4, 0.3);
+        if (p.kind === 'barrels') {
+            for (const [bx, by] of [[x, y], [x + 13, y], [x + 6, y - 12]]) {
+                g.rect(bx - 1, by - 13, 13, 13, INK);
+                g.rect(bx, by - 12, 11, 12, 0x8a5a32);
+                g.rect(bx + 1, by - 12, 3, 12, 0xa8703e);
+                g.rect(bx, by - 10, 11, 1, 0x4a4a52);
+                g.rect(bx, by - 3, 11, 1, 0x4a4a52);
+                g.rect(bx + 1, by - 12, 9, 1, 0xb88a50);
+            }
+        } else if (p.kind === 'crates') {
+            for (const [bx, by, s] of [[x, y, 13], [x + 12, y, 11], [x + 4, y - 12, 11]]) {
+                g.rect(bx - 1, by - s - 1, s + 2, s + 1, INK);
+                g.rect(bx, by - s, s, s, 0xa8784a);
+                g.rect(bx, by - s, s, 1, 0xc8985a);
+                g.line(bx + 1, by - 1, bx + s - 2, by - s + 1, 0x7a5232);
+                g.rect(bx, by - Math.ceil(s / 2), s, 1, 0x7a5232);
+            }
+            if (!snow)
+                for (let i = 0; i < 3; i++)
+                    g.disc(x + 6 + i * 3, y - 25, 2, [0xd84040, 0x6ab84a, 0xf0c040][i]);
+        } else if (p.kind === 'hay') {
+            g.rect(x - 1, y - 14, p.w + 2, 14, INK);
+            g.rect(x, y - 13, p.w, 13, 0xd8b850);
+            for (let i = 0; i < p.w; i += 2)
+                g.rect(x + i, y - 13 + (i * 7) % 5, 1, 4, 0xf0dc80);
+            g.rect(x, y - 9, p.w, 1, 0x8a6a30);
+            g.rect(x, y - 4, p.w, 1, 0x8a6a30);
+            g.rect(x, y - 13, p.w, 1, snow ? 0xf4f8ff : 0xf4e090);
+            for (let i = 0; i < 6; i++)
+                g.rect(x - 3 + i * 6, y, 2, 1, 0xd8c070);
+        } else {
+            // a hand cart resting on its shafts
+            drawCart(g, x, y, 40, pick(['sacks', 'cabbages', 'barrels', 'logs']), p.seed, false);
+            g.line(x + 38, y - 12, x + 52, y - 1, 0x5a3a20);
+            g.line(x + 38, y - 10, x + 52, y, 0x5a3a20);
+        }
     }
 
     _trough(g, p, env) {
@@ -2515,6 +2632,7 @@ export class Medieval {
             this._renderGate(g, env);
         for (const w of this.windows)
             w.render(g, env);
+        A.drawTufts(g, this.weeds, env.weather.snowCover > 0.3 ? 'winter' : env.season === 'summer' ? 'autumn' : env.season, env.weather);
         if (this.church)
             this._renderChurch(g, env);
         if (this.smithy)
@@ -2782,21 +2900,33 @@ export class Medieval {
 
     _renderFar(g, env) {
         const dim = mix(0x6a5a4a, env.skyBottom, 0.3), sail = mix(0xe8dcc0, env.skyBottom, 0.3);
+        const L = this.layerA, F = this.farSnap, W = this.w;
+        const far = (x, y) => {
+            x = Math.round(x);
+            y = Math.round(y);
+            return x >= 0 && y >= 0 && x < W && y < this.h && L[y * W + x] === F[y * W + x];
+        };
         if (this.mill && this.mill.hub) {
             const [hx, hy] = this.mill.hub;
             this.mill.a += 0.004 * (0.4 + Math.abs(env.weather.lean(hx)));
             for (let k = 0; k < 4; k++) {
                 const a = this.mill.a + k * Math.PI / 2;
-                for (let i = 2; i < 12; i++)
-                    g.px(Math.round(hx + Math.cos(a) * i), Math.round(hy + Math.sin(a) * i), i > 4 ? sail : dim);
+                for (let i = 2; i < 12; i++) {
+                    const x = hx + Math.cos(a) * i, y = hy + Math.sin(a) * i;
+                    if (far(x, y))
+                        g.px(Math.round(x), Math.round(y), i > 4 ? sail : dim);
+                }
             }
         }
         // pennants on the castle towers
         const flag = mix(0xc83030, env.skyBottom, 0.35);
         for (const [fx, fy] of this.castleFlags || []) {
             const lean = env.weather.lean(fx), dir = lean < 0 ? -1 : 1, len = 4 + Math.min(3, Math.round(Math.abs(lean) * 2));
-            for (let i = 1; i <= len; i++)
-                g.rect(fx + dir * i, fy + Math.round(Math.sin(this.realT * 5 + i) * 0.6), 1, i > len - 2 ? 1 : 2, flag);
+            for (let i = 1; i <= len; i++) {
+                const x = fx + dir * i, y = fy + Math.round(Math.sin(this.realT * 5 + i) * 0.6);
+                if (far(x, y))
+                    g.rect(x, y, 1, i > len - 2 ? 1 : 2, flag);
+            }
         }
     }
 

@@ -316,7 +316,8 @@ export class Town {
         // they really changed
         this.darkLevel = steppedLevel(env.dark, this.darkLevel, 4);
         this.wetLevel = steppedLevel(env.weather.wet, this.wetLevel, 1);
-        return [this.darkLevel, env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), this.wetLevel, env.season].join(':');
+        const sh = A.sunShadow(env);
+        return [this.darkLevel, env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), this.wetLevel, env.season, sh ? [sh.depth, sh.skew, sh.a] : 0].join(':');
     }
 
     // ---------- static layers ----------
@@ -336,6 +337,12 @@ export class Town {
             for (const b of this.buildings)
                 this._drawBuilding(g, b, env);
             this._drawStreet(g, env);
+            // the houses throw their shadow onto the sidewalk
+            const sh = A.sunShadow(env);
+            if (sh)
+                for (const b of this.buildings)
+                    if (b.kind !== 'gap')
+                        A.castShadow(g, b.x, b.w, this.backTop, sh);
         });
         g.into(this.layerB, () => this._drawCurb(g, env));
         g.into(this.layerC, () => this._drawPark(g, env));
@@ -610,17 +617,64 @@ export class Town {
         A.bigTree(g, b.x + b.w / 2, this.base - 6, 28, env.season, b.seed, env.weather.snowCover);
     }
 
+    // square concrete slabs, a few cracked or stained, grass in some joints
+    _sidewalk(g, y, h, seed) {
+        const W = this.w;
+        g.rect(0, y, W, h, 0x8e8880);
+        for (let yy = y, row = 0; yy < y + h; yy += 8, row++)
+            for (let xx = -(row % 2) * 7, k = 0; xx < W; xx += 14, k++) {
+                const id = row * 97 + k, t = hash(id, seed) % 10;
+                const c = t < 2 ? 0xa8a29a : t > 8 ? 0xc2bcb2 : 0xb6b0a6;
+                const hh = Math.min(7, y + h - yy - 1);
+                if (hh < 2)
+                    continue;
+                g.rect(xx + 1, yy + 1, 13, hh, c);
+                g.rect(xx + 2, yy + 1, 11, 1, mix(c, 0xffffff, 0.2));
+                g.rect(xx + 1, yy + hh, 13, 1, mix(c, 0x3a3440, 0.12));
+                const v = hash(id, seed + 3);
+                if (v < 60) {
+                    // a crack
+                    let cx = xx + 3 + v % 8;
+                    for (let cy = yy + 2; cy < yy + hh; cy++, cx += (hash(cy, id) % 3) - 1)
+                        g.px(cx, cy, mix(c, 0x3a3440, 0.3));
+                } else if (v < 110) {
+                    g.rect(xx + 4 + v % 6, yy + 3, 2, 1, mix(c, 0x2a2430, 0.35));
+                } else if (v > 900) {
+                    // grass in the joint
+                    g.px(xx + 14, yy + 2 + v % 4, 0x5a8a3a);
+                    g.px(xx + 14, yy + 3 + v % 4, 0x4a7a32);
+                    g.px(xx + 13, yy + 2 + v % 4, 0x7aa84a);
+                }
+            }
+    }
+
+    // granite kerb with an iron drain grate here and there
+    _kerb(g, y) {
+        const W = this.w;
+        g.rect(0, y, W, 3, 0x6a6670);
+        for (let x = -(hash(y, 5) % 24); x < W; x += 24) {
+            g.rect(x + 1, y, 23, 2, 0x9a96a0);
+            g.rect(x + 1, y, 23, 1, 0xc4c0c8);
+        }
+        for (let x = 40 + hash(y, 7) % 60; x < W; x += 170 + hash(x, y) % 80) {
+            if (Math.abs(x - this.crossX - 12) < 30)
+                continue;
+            g.rect(x, y - 1, 12, 4, 0x2a2a32);
+            for (let i = 1; i < 12; i += 2)
+                g.rect(x + i, y, 1, 2, 0x14141a);
+        }
+    }
+
     _drawStreet(g, env) {
         const W = this.w;
         const snow = env.weather.snowCover;
-        const walkR = A.ramp(0xb0a8a0);
-        A.cobble(g, 0, this.backTop, W, this.roadTop - this.backTop - 2, walkR, 3);
-        g.rect(0, this.roadTop - 3, W, 3, 0x8a8478);
-        g.rect(0, this.roadTop - 3, W, 1, 0xc8c0b0);
-        // asphalt with patches
+        this._sidewalk(g, this.backTop, this.roadTop - this.backTop - 3, 3);
+        this._kerb(g, this.roadTop - 3);
+        // asphalt: grain, worn wheel tracks, cracks, patches and old tar lines
+        const rTop = this.roadTop, rBot = this.frontTop;
         const road = mix(0x4a4a5a, 0x34344a, this.wetLevel * 0.5);
-        g.rect(0, this.roadTop, W, this.frontTop - this.roadTop, road);
-        for (let y = this.roadTop; y < this.frontTop; y++)
+        g.rect(0, rTop, W, rBot - rTop, road);
+        for (let y = rTop; y < rBot; y++)
             for (let x = 0; x < W; x++) {
                 const v = hash(x, y);
                 if (v < 25)
@@ -628,29 +682,58 @@ export class Town {
                 else if (v > 985)
                     g.px(x, y, highlight(road, 0.12));
             }
-        for (let i = 0; i < W / 120; i++) {
-            const px = hash(i, 41) * W / 1000, py = this.roadTop + 4 + hash(i, 43) % 40;
-            g.rect(px, py, 10 + hash(i, 3) % 12, 4, shadow(road, 0.12));
+        for (const l of this.lanes)
+            for (const dy of [-4, 4])
+                g.blend(0, l.y + dy - 2, W, 3, 0x8a8a9a, 0.07);
+        g.blend(0, rTop, W, 3, 0x1a1a24, 0.25);
+        g.blend(0, rBot - 3, W, 3, 0x1a1a24, 0.2);
+        for (let i = 0; i < W / 110; i++) {
+            // patched repairs with a dark seam
+            const px = hash(i, 41) * W / 1000, py = rTop + 5 + hash(i, 43) % 36, pw = 10 + hash(i, 3) % 16, ph = 4 + hash(i, 5) % 4;
+            g.rect(px - 1, py - 1, pw + 2, ph + 2, shadow(road, 0.3));
+            g.rect(px, py, pw, ph, mix(road, 0x5a5a6a, 0.45));
         }
-        const mid = this.roadTop + 25;
-        for (let x = 0; x < W; x += 24)
+        for (let i = 0; i < W / 90; i++) {
+            // hairline cracks
+            let cx = hash(i, 51) * W / 1000, cy = rTop + 3 + hash(i, 53) % 40;
+            for (let k = 0; k < 6 + hash(i, 55) % 8; k++) {
+                g.px(cx, cy, shadow(road, 0.35));
+                cx += 1;
+                cy += (hash(k, i) % 3) - 1;
+            }
+        }
+        for (let i = 0; i < W / 300; i++)
+            g.blend(hash(i, 61) * W / 1000, rTop + 8 + hash(i, 63) % 30, 7, 3, 0x1a1420, 0.3);
+        // centre line, a little worn
+        const mid = rTop + 25;
+        for (let x = 0; x < W; x += 24) {
             g.rect(x, mid, 12, 2, 0xf0e8c8);
+            for (let k = 0; k < 3; k++)
+                g.px(x + hash(x, k) % 12, mid + (k % 2), mix(0xf0e8c8, road, 0.6));
+        }
         // crosswalk
-        for (let y = this.roadTop + 2; y < this.frontTop - 2; y += 5)
+        for (let y = rTop + 2; y < rBot - 2; y += 5) {
             g.rect(this.crossX, y, 26, 3, 0xece8e0);
-        // manhole
-        const mx = Math.floor(W * 0.7);
-        g.disc(mx, this.roadTop + 36, 4, 0x3a3a48);
-        g.rect(mx - 2, this.roadTop + 35, 5, 1, 0x5a5a68);
+            g.px(this.crossX + hash(y, 2) % 26, y + 1, mix(0xece8e0, road, 0.5));
+        }
+        // manholes
+        for (const fx of [0.18, 0.7]) {
+            const mx = Math.floor(W * fx), my = rTop + 10 + Math.floor(fx * 30);
+            if (Math.abs(mx - this.crossX - 12) < 30)
+                continue;
+            for (let i = 0; i < 4; i++)
+                g.rect(mx - 6 + Math.abs(i - 1.5) * 2 - 1, my + i, 14 - Math.abs(i - 1.5) * 4 + 2, 1, 0x2a2a34);
+            g.rect(mx - 4, my + 1, 9, 2, 0x4a4a58);
+            g.rect(mx - 3, my + 1, 7, 1, 0x5a5a6a);
+        }
         if (this.wetLevel)
             for (let i = 0; i < W / 50; i++) {
-                const px = hash(i, 7) * W / 1000, py = this.roadTop + 4 + (hash(i, 9) % 40);
-                g.blend(px, py, 10 + hash(i, 3) % 14, 2, env.skyBottom, 0.36, true);
+                const px = hash(i, 7) * W / 1000, py = rTop + 4 + (hash(i, 9) % 40);
+                A.puddle(g, px, py, 12 + hash(i, 3) % 14, env.skyBottom, i);
             }
         // front sidewalk
-        g.rect(0, this.frontTop, W, 3, 0x8a8478);
-        g.rect(0, this.frontTop + 2, W, 1, 0xc8c0b0);
-        A.cobble(g, 0, this.frontTop + 3, W, this.parkTop - this.frontTop - 3, walkR, 5);
+        this._kerb(g, this.frontTop);
+        this._sidewalk(g, this.frontTop + 3, this.parkTop - this.frontTop - 3, 5);
         if (snow > 0.2) {
             g.blend(0, this.backTop, W, this.roadTop - this.backTop - 3, 0xf4f8ff, snow * 0.8);
             g.blend(0, this.frontTop + 3, W, this.parkTop - this.frontTop - 3, 0xf4f8ff, snow * 0.8);

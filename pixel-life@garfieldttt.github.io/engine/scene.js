@@ -1,7 +1,7 @@
 // Engine: owns the clock, environment, weather, sky and the active motif,
 // and renders everything into one RGBA pixel buffer.
 import {clamp, rand, pick} from './util.js';
-import {Gfx, mix} from './gfx.js';
+import {Gfx, mix, seloutBuffer} from './gfx.js';
 import {solar, moonPhase, skyAt, season, holidays} from './env.js';
 import {Weather} from './weather.js';
 import {Sky} from './sky.js';
@@ -211,6 +211,10 @@ export class Engine {
         if (worldKey !== this.worldKey) {
             this.worldKey = worldKey;
             g.unlit(() => this.motif.renderStatic(g, env));
+            // sel-out for everything drawn straight into the static layers
+            for (const v of Object.values(this.motif))
+                if (v instanceof Uint32Array && v.length === this.w * this.h)
+                    seloutBuffer(v, this.w, this.h);
             g.layerVersion++;
         }
         g.compose(this.motif.layerA, 0, this.h, true);

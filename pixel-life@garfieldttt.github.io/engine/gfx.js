@@ -31,6 +31,53 @@ export const shadow = (c, t = 0.3) => mix(c, 0x2a1838, t);
 export const highlight = (c, t = 0.25) => mix(c, 0xfff2c0, t);
 export const OUTLINE = 0x3a2230;
 
+// Selective outlines (sel-out): instead of one near-black everywhere, an
+// outline takes a dark shade of the color it encloses, as hand-drawn
+// pixel art does. The two plain outline colors are recolored; anything
+// else drawn dark stays as it is.
+const SELOUT = new Set([0x3a2230, 0x2c1a2a]);
+const lum = c => ((c >> 16) & 255) * 3 + ((c >> 8) & 255) * 6 + (c & 255);
+export function isOutline(c) {
+    return SELOUT.has(c);
+}
+// darkest of the neighbouring colors, deepened towards a cool purple
+export function outlineOf(colors) {
+    let best = colors[0];
+    for (const c of colors)
+        if (lum(c) < lum(best))
+            best = c;
+    return mix(best, 0x1a0a20, 0.68);
+}
+
+const unpack = p => ((p & 255) << 16) | (p & 0xff00) | ((p >> 16) & 255);
+const SELOUT_PACKED = new Set([...SELOUT].map(c => pack(c >> 16, (c >> 8) & 255, c & 255)));
+
+// Recolor the plain outline pixels in a box of a packed pixel buffer
+// (row width W) from their opaque neighbours.
+export function seloutBuffer(buf, W, H, x0 = 0, y0 = 0, w = W, h = H) {
+    const changes = [];
+    const x1 = Math.max(0, x0), y1 = Math.max(0, y0), x2 = Math.min(W, x0 + w), y2 = Math.min(H, y0 + h);
+    for (let y = y1; y < y2; y++) {
+        for (let x = x1; x < x2; x++) {
+            const i = y * W + x;
+            if (!SELOUT_PACKED.has(buf[i]))
+                continue;
+            const n = [];
+            for (const j of [x > x1 ? i - 1 : -1, x < x2 - 1 ? i + 1 : -1, y > y1 ? i - W : -1, y < y2 - 1 ? i + W : -1]) {
+                const v = j >= 0 ? buf[j] : 0;
+                if (v && !SELOUT_PACKED.has(v) && (v >>> 24) === 255)
+                    n.push(unpack(v));
+            }
+            if (n.length) {
+                const c = outlineOf(n);
+                changes.push(i, pack(c >> 16, (c >> 8) & 255, c & 255));
+            }
+        }
+    }
+    for (let k = 0; k < changes.length; k += 2)
+        buf[changes[k]] = changes[k + 1];
+}
+
 // Sprite from text rows; every non-space char is a palette key.
 export function sprite(rows) {
     const pts = [];
@@ -174,6 +221,8 @@ export class Gfx {
         const [hx, hy, hw, hh] = hint;
         const sx1 = Math.max(0, Math.floor(hx) - 8), sx2 = Math.min(W, Math.ceil(hx + hw) + 8);
         const sy1 = Math.max(0, Math.floor(hy) - 8), sy2 = Math.min(H, Math.ceil(hy + hh) + 8);
+        // alone on the scratch layer the object's own colors are known
+        seloutBuffer(S, W, H, sx1, sy1, sx2 - sx1, sy2 - sy1);
         let x1 = W, y1 = H, x2 = -1, y2 = -1;
         for (let y = sy1; y < sy2; y++) {
             const row = y * W;
