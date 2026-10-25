@@ -1,7 +1,7 @@
 // Big city motif in the cozy pixel look: a street of cottages, town houses
 // with shops, apartment blocks and towers; traffic, people, pets, a park
 // in the foreground and plenty of random events.
-import {rand, randi, chance, pick, weighted, clamp} from './util.js';
+import {rand, randi, chance, pick, weighted, clamp, steppedLevel} from './util.js';
 import {mix, shadow, highlight} from './gfx.js';
 import * as A from './art.js';
 import {Household, Win} from './windows.js';
@@ -294,7 +294,11 @@ export class Town {
     }
 
     staticKey(env) {
-        return [Math.round(env.dark * 4), env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), Math.round(env.weather.wet * 3), env.season].join(':');
+        // each rebuild stalls a frame, so light and wetness only count once
+        // they really changed
+        this.darkLevel = steppedLevel(env.dark, this.darkLevel, 4);
+        this.wetLevel = steppedLevel(env.weather.wet, this.wetLevel, 1);
+        return [this.darkLevel, env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), this.wetLevel, env.season].join(':');
     }
 
     // ---------- static layers ----------
@@ -577,7 +581,7 @@ export class Town {
         g.rect(0, this.roadTop - 3, W, 3, 0x8a8478);
         g.rect(0, this.roadTop - 3, W, 1, 0xc8c0b0);
         // asphalt with patches
-        const road = mix(0x4a4a5a, 0x34344a, env.weather.wet * 0.6);
+        const road = mix(0x4a4a5a, 0x34344a, this.wetLevel * 0.5);
         g.rect(0, this.roadTop, W, this.frontTop - this.roadTop, road);
         for (let y = this.roadTop; y < this.frontTop; y++)
             for (let x = 0; x < W; x++) {
@@ -601,10 +605,10 @@ export class Town {
         const mx = Math.floor(W * 0.7);
         g.disc(mx, this.roadTop + 36, 4, 0x3a3a48);
         g.rect(mx - 2, this.roadTop + 35, 5, 1, 0x5a5a68);
-        if (env.weather.wet > 0.2)
+        if (this.wetLevel)
             for (let i = 0; i < W / 50; i++) {
                 const px = hash(i, 7) * W / 1000, py = this.roadTop + 4 + (hash(i, 9) % 40);
-                g.blend(px, py, 10 + hash(i, 3) % 14, 2, env.skyBottom, 0.45 * env.weather.wet, true);
+                g.blend(px, py, 10 + hash(i, 3) % 14, 2, env.skyBottom, 0.36, true);
             }
         // front sidewalk
         g.rect(0, this.frontTop, W, 3, 0x8a8478);

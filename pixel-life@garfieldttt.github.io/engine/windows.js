@@ -231,8 +231,10 @@ export class Win {
         windowMullions(g, x, y, w, h, fr);
         if (this.lit && night > 0.3) {
             const lamp = this._lampColor(env);
-            g.glow(x + w / 2, y + h / 2, w * 1.3, lamp, 0.12 * night);
-            g.glow(x + w / 2, y + h + 4, w, lamp, 0.15 * night, 0.4);
+            // glow cost grows with the area; kept at the size it had for
+            // the small windows, it reads the same on the big ones
+            g.glow(x + w / 2, y + h / 2, Math.min(w * 1.3, 21), lamp, 0.12 * night);
+            g.glow(x + w / 2, y + h + 4, Math.min(w, 16), lamp, 0.15 * night, 0.4);
         }
         if (this.plant) {
             g.rect(x + 2, y + h - 3, 4, 3, 0xb85a38);

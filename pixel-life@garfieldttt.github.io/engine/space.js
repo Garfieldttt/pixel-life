@@ -9,6 +9,8 @@ import {Timers} from './timers.js';
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
 const SPACE = 0x06050e;
+// rows of the planet relit per frame
+const RELIGHT_ROWS = 48;
 const HULL = [0x2a2a36, 0x4a4a58, 0x74747e, 0x9c9ca4, 0xc8c8cc];
 const NEBULAS = [[0x7a2a8a, 0x2a6ab0], [0xb04a3a, 0x6a2a8a], [0x2a8a8a, 0x3a3aa0], [0xc07a3a, 0xa03a6a], [0x3a8a5a, 0x2a4a9a]];
 const PLANETS = ['desert', 'gas', 'ice', 'ocean', 'lava', 'forest', 'red'];
@@ -321,20 +323,43 @@ export class Space {
         return [lx / l, ly / l, lz / l];
     }
 
+    // The first build is done at once. Later the light turns every 20
+    // minutes; relighting the planet takes about 100ms, so it is drawn in
+    // bands over a few frames into a spare layer and swapped in when done.
     renderStatic(g, env) {
-        if (!this.layerA)
-            this.layerA = g.layer();
         if (!this.bg)
             this.bg = this._background(g);
-        this.layerA.set(this.bg);
-        g.into(this.layerA, () => {
-            const L = this._lightDir(env);
-            if (this.moon)
-                this._sphere(g, this.moon.x, this.moon.y, this.moon.R, this.moon.kind, L, false);
-            const p = this.planet;
-            this._sphere(g, p.cx, p.cy, p.R, this.kind, L, p.rings);
+        const L = this._lightDir(env);
+        if (!this.layerA) {
+            this.layerA = g.layer();
+            this.layerA.set(this.bg);
+            g.into(this.layerA, () => this._relight(g, L, 0, this.h));
+            return;
+        }
+        this.relight = {L, row: 0, spare: this.relight?.spare ?? g.layer()};
+        this.relight.spare.set(this.bg);
+    }
+
+    _relight(g, L, from, to) {
+        if (this.moon)
+            this._sphere(g, this.moon.x, this.moon.y, this.moon.R, this.moon.kind, L, false, from, to);
+        const p = this.planet;
+        this._sphere(g, p.cx, p.cy, p.R, this.kind, L, p.rings, from, to);
+        if (to >= this.h)
             this._station(g);
-        });
+    }
+
+    _stepRelight(g) {
+        const job = this.relight;
+        if (!job || job.row >= this.h)
+            return;
+        const to = job.row + RELIGHT_ROWS;
+        g.unlit(() => g.into(job.spare, () => this._relight(g, job.L, job.row, to)));
+        job.row = to;
+        if (job.row >= this.h) {
+            [this.layerA, job.spare] = [job.spare, this.layerA];
+            g.layerVersion++;
+        }
     }
 
     _background(g) {
@@ -471,7 +496,8 @@ export class Space {
     }
 
     // Lit sphere with texture, terminator dithering, rim glow and rings.
-    _sphere(g, cx, cy, R, kind, [lx, ly, lz], rings) {
+    // from/to limit the rows, so a big planet can be lit over several frames
+    _sphere(g, cx, cy, R, kind, [lx, ly, lz], rings, from = 0, to = this.h) {
         const W = this.w, H = this.h, t = g.t;
         const n = noise(this.seed + R), n2 = noise(this.seed + R + 3);
         const atmo = this._atmo(kind), rim = atmo ? Math.max(3, Math.round(R * 0.025)) : 0;
@@ -479,7 +505,7 @@ export class Space {
         const x1 = Math.max(0, Math.floor(cx - R - rim)), x2 = Math.min(W, Math.ceil(cx + R + rim));
         const y1 = Math.max(0, Math.floor(cy - R - rim)), y2 = Math.min(H, Math.ceil(cy + R + rim));
         const tex = kind === 'moon' ? null : kind;
-        for (let y = y1; y < y2; y++) {
+        for (let y = Math.max(y1, from); y < Math.min(y2, to); y++) {
             for (let x = x1; x < x2; x++) {
                 const dx = (x + 0.5 - cx) / R, dy = (y + 0.5 - cy) / R, d2 = dx * dx + dy * dy;
                 const i = y * W + x;
@@ -518,7 +544,7 @@ export class Space {
                 t[i] = pack((c >> 16) & 255, (c >> 8) & 255, c & 255);
             }
         }
-        if (rings)
+        if (rings && to >= y2)
             this._rings(g, cx, cy, R, lz);
     }
 
@@ -889,6 +915,7 @@ export class Space {
     // ---------- render ----------
 
     renderDynamic(g) {
+        this._stepRelight(g);
         const t = this.t;
         for (const s of this.twinkle) {
             const b = 0.5 + 0.5 * Math.sin(t * s.f + s.p);

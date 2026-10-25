@@ -96,14 +96,11 @@ export class Gfx {
     // Layers are drawn unlit; lit=true applies the ambient light here,
     // except to light sources (alpha 254).
     compose(layer, y1 = 0, y2 = this.h, lit = false) {
-        const W = this.w, t = this.t;
+        const W = this.w;
         const s = Math.max(0, Math.floor(y1)) * W, e = Math.min(this.h, Math.ceil(y2)) * W;
+        const runs = this._runs(layer);
         if (!lit || (this.ar === 1 && this.ag === 1 && this.ab === 1)) {
-            for (let i = s; i < e; i++) {
-                const p = layer[i];
-                if (p)
-                    t[i] = p;
-            }
+            this._copyRuns(layer, runs, s, e);
             return;
         }
         // the lit copy is cached until the light or the layer changes
@@ -112,19 +109,52 @@ export class Gfx {
         let c = this.litCache.get(layer);
         if (!c || c.key !== key) {
             const {lr, lg, lb} = this;
-            const buf = c && c.buf.length === layer.length ? c.buf : new Uint32Array(layer.length);
-            for (let i = 0; i < layer.length; i++) {
-                const p = layer[i];
-                buf[i] = !p || (p >>> 24) === 254 ? p : (0xff000000 | lb[(p >> 16) & 255] | lg[(p >> 8) & 255] | lr[p & 255]) >>> 0;
+            const reuse = c && c.buf.length === layer.length;
+            const buf = reuse ? c.buf : new Uint32Array(layer.length);
+            if (reuse)
+                buf.fill(0);
+            for (let r = 0; r < runs.length; r += 2) {
+                for (let i = runs[r]; i < runs[r + 1]; i++) {
+                    const p = layer[i];
+                    buf[i] = (p >>> 24) === 254 ? p : (0xff000000 | lb[(p >> 16) & 255] | lg[(p >> 8) & 255] | lr[p & 255]) >>> 0;
+                }
             }
             c = {key, buf};
             this.litCache.set(layer, c);
         }
-        const buf = c.buf;
-        for (let i = s; i < e; i++) {
-            const p = buf[i];
-            if (p)
-                t[i] = p;
+        this._copyRuns(c.buf, runs, s, e);
+    }
+
+    // Start/end index pairs of the non-transparent stretches of a layer,
+    // kept until the static layers are drawn again. Copying those whole
+    // stretches is much faster than testing every pixel each frame.
+    _runs(layer) {
+        this.runCache = this.runCache || new WeakMap();
+        let c = this.runCache.get(layer);
+        if (!c || c.version !== this.layerVersion) {
+            const runs = [], n = layer.length;
+            let i = 0;
+            while (i < n) {
+                while (i < n && !layer[i])
+                    i++;
+                const start = i;
+                while (i < n && layer[i])
+                    i++;
+                if (i > start)
+                    runs.push(start, i);
+            }
+            c = {version: this.layerVersion, runs: Int32Array.from(runs)};
+            this.runCache.set(layer, c);
+        }
+        return c.runs;
+    }
+
+    _copyRuns(src, runs, s, e) {
+        const t = this.t;
+        for (let r = 0; r < runs.length; r += 2) {
+            const a = Math.max(runs[r], s), b = Math.min(runs[r + 1], e);
+            if (a < b)
+                t.set(src.subarray(a, b), a);
         }
     }
 
@@ -299,7 +329,12 @@ export class Gfx {
         const t = this.t, W = this.w;
         for (let y = y1; y < y2; y++) {
             const dy = (y + 0.5 - cy) / ry;
-            for (let x = x1; x < x2; x++) {
+            if (dy * dy >= 1)
+                continue;
+            // only the width of the circle on this row
+            const span = r * Math.sqrt(1 - dy * dy);
+            const xa = Math.max(x1, Math.floor(cx - 0.5 - span)), xb = Math.min(x2, Math.ceil(cx - 0.5 + span) + 1);
+            for (let x = xa; x < xb; x++) {
                 const dx = (x + 0.5 - cx) / r;
                 const d = dx * dx + dy * dy;
                 if (d >= 1)

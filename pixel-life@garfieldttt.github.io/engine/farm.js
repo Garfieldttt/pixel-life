@@ -1,6 +1,6 @@
 // Countryside motif in the cozy pixel look: mountains, a village, the railway,
 // and a farm with crops, animals, a pond and a country road.
-import {rand, randi, chance, pick, weighted, clamp} from './util.js';
+import {rand, randi, chance, pick, weighted, clamp, steppedLevel} from './util.js';
 import {mix, shadow, highlight} from './gfx.js';
 import * as A from './art.js';
 import {Household, Win} from './windows.js';
@@ -299,7 +299,11 @@ export class Farm {
     }
 
     staticKey(env) {
-        return [Math.round(env.dark * 4), env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), env.season, Math.round(env.weather.wet * 2)].join(':');
+        // each rebuild stalls a frame, so light and wetness only count once
+        // they really changed
+        this.darkLevel = steppedLevel(env.dark, this.darkLevel, 4);
+        this.wetLevel = steppedLevel(env.weather.wet, this.wetLevel, 1);
+        return [this.darkLevel, env.lampsOn ? 1 : 0, Math.round(env.weather.snowCover * 4), env.season, this.wetLevel].join(':');
     }
 
     renderStatic(g, env) {
@@ -630,7 +634,7 @@ export class Farm {
         // country road
         A.dirtPath(g, 0, this.roadTop, this.w, this.h - this.roadTop, season, 31);
         g.rect(0, this.roadTop, this.w, 1, A.GRASS[season][1]);
-        if (env.weather.wet > 0.3)
+        if (this.wetLevel)
             for (let i = 0; i < this.w / 60; i++)
                 g.blend(hash(i, 11) * this.w / 1000, this.roadTop + 4 + hash(i, 13) % 8, 14, 3, env.skyBottom, 0.35);
         // pond

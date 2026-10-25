@@ -24,3 +24,12 @@ export function weighted(entries) {
 
 // Exponential approach, frame rate independent.
 export const approach = (v, target, rate, dt) => target + (v - target) * Math.exp(-rate * dt);
+
+// v (0..1) in n steps; the step only changes once v is clearly past the
+// boundary, so a value hovering there does not flip back and forth.
+export function steppedLevel(v, prev, n, margin = 0.2) {
+    const x = v * n;
+    if (prev !== undefined && Math.abs(x - prev) < 0.5 + margin)
+        return prev;
+    return Math.round(x);
+}
