@@ -298,14 +298,21 @@ export function barrel(g, x, y) {
 }
 
 export function crate(g, x, y) {
+    // plank crate: a frame of darker boards, a diagonal brace, nails
     const R = A.ramp(0xb8884a);
     g.blend(x - 1, y - 2, 14, 3, 0x0a0818, 0.3);
     g.rect(x - 1, y - 13, 14, 13, INK);
     g.rect(x, y - 12, 12, 11, R[2]);
+    for (let py = y - 9; py < y - 2; py += 3)
+        g.rect(x + 2, py, 8, 1, R[1]);
+    g.rect(x, y - 12, 12, 2, R[3]);
     g.rect(x, y - 12, 12, 1, R[4]);
-    g.rect(x, y - 2, 12, 1, R[1]);
-    g.line(x, y - 12, x + 11, y - 2, R[1]);
-    g.rect(x, y - 7, 12, 1, R[1]);
+    g.rect(x, y - 3, 12, 2, R[1]);
+    g.rect(x, y - 12, 2, 11, R[3]);
+    g.rect(x + 10, y - 12, 2, 11, R[1]);
+    g.line(x + 2, y - 4, x + 9, y - 10, R[0]);
+    for (const [nx, ny] of [[x + 1, y - 11], [x + 10, y - 11], [x + 1, y - 2], [x + 10, y - 2]])
+        g.px(nx, ny, 0x5a5a64);
 }
 
 export function brazier(g, x, y) {
@@ -408,26 +415,13 @@ export function mailbox(g, x, y) {
 }
 
 export function rock(g, x, y, s, size = 1) {
-    const R = A.ramp(0x9a98a8);
-    const w = 10 + size * 6, h = 7 + size * 4;
-    g.blend(x - 1, y - 2, w + 2, 3, 0x0a0818, 0.3);
-    g.rect(x + 1, y - h, w - 2, h, INK);
-    g.rect(x, y - h + 1, w, h - 2, INK);
-    g.rect(x + 1, y - h + 1, w - 2, h - 2, R[2]);
-    g.rect(x + 2, y - h + 1, w - 5, 2, R[3]);
-    g.rect(x + 3, y - h + 1, 3, 1, R[4]);
-    g.rect(x + 1, y - 3, w - 2, 2, R[1]);
-    if (hash(x, y, s) % 2)
-        g.rect(x + w - 5, y - h + 3, 1, 3, R[1]);
+    g.footShadow(x + 9, y, 20, 0.3);
+    A.boulder(g, x, y, hash(x, y, s), 'summer');
 }
 
 export function stump(g, x, y) {
-    const R = A.ramp(0x8a5a38);
-    g.rect(x - 1, y - 10, 16, 10, INK);
-    g.rect(x, y - 9, 14, 8, R[2]);
-    g.rect(x, y - 9, 14, 3, 0xd8b080);
-    g.rect(x + 4, y - 8, 6, 1, 0xa87850);
-    g.rect(x + 1, y - 4, 2, 4, R[1]);
+    g.footShadow(x + 7, y, 20, 0.3);
+    A.stump(g, x, y, 'spring');
 }
 
 export function flowerPot(g, x, y, c, season) {

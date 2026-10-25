@@ -294,7 +294,7 @@ export function bush(g, x, ground, w, R, seed = 0) {
     const n = Math.max(2, Math.round(w / 8)), r = Math.max(4, Math.round(w / n / 2) + 1);
     const lobes = [];
     for (let i = 0; i < n; i++)
-        lobes.push([x + r + Math.round(i * (w - 2 * r) / (n - 1)), ground - r - 1, r]);
+        lobes.push([x + r + Math.round(i * (w - 2 * r) / (n - 1)), ground - r - 2, r]);
     for (let i = 1; i < n; i += 2)
         lobes.push([lobes[i - 1][0] + Math.round((lobes[i][0] - lobes[i - 1][0]) / 2), ground - r - 3 - hash(i, 3, seed) % 3, r]);
     for (const [cx, cy, rr] of lobes)
@@ -310,6 +310,71 @@ export function bush(g, x, ground, w, R, seed = 0) {
     }
     g.rect(x + 1, ground - 1, w - 2, 1, R[0]);
     return lobes;
+}
+
+// Boulder about 22px wide incl. a pebble, foot at y: lit top face,
+// shaded side, a crack and some moss.
+export function boulder(g, x, y, seed, season) {
+    const b = {seed};
+    // a boulder: lit top face, cool shadow side, a crack and moss
+    const R = ramp(0x8c8ca0), rows = [6, 10, 13, 15, 16, 16, 16, 15, 13];
+    const cx = x + 8, top = y - rows.length;
+    rows.forEach((wd, i) => {
+        const lx = cx - Math.floor(wd / 2);
+        g.rect(lx - 1, top + i, wd + 2, 1, INK);
+        g.rect(lx, top + i, wd, 1, R[2]);
+        g.rect(lx + wd - Math.ceil(wd / 3), top + i, Math.ceil(wd / 3), 1, R[1]);
+        if (i < 4)
+            g.rect(lx + 1, top + i, Math.floor(wd / 2), 1, R[3]);
+    });
+    g.rect(cx - 2, top - 1, 6, 1, INK);
+    g.px(cx - 3, top + 1, R[4]);
+    g.px(cx - 2, top + 1, R[4]);
+    g.line(cx + 2, top + 2, cx + 4, top + 6, R[0]);
+    g.rect(cx - 7, y - 2, 14, 1, R[1]);
+    if (season === 'winter')
+        for (let i = 0; i < 3; i++)
+            g.rect(cx - Math.floor(rows[i] / 2) + 1, top + i, rows[i] - 2, 1, i ? 0xdce4f4 : 0xf4f8ff);
+    else if (b.seed % 2) {
+        const M = leafRamp(season);
+        g.rect(cx - 4, top + 1, 5, 1, M[2]);
+        g.rect(cx - 5, top + 2, 3, 1, M[1]);
+        g.px(cx - 3, top + 1, M[3]);
+    }
+    // a pebble next to it
+    g.rect(cx + 9, y - 3, 5, 3, INK);
+    g.rect(cx + 10, y - 3, 3, 2, R[2]);
+    g.px(cx + 10, y - 3, R[3]);
+}
+
+// Tree stump about 20px wide incl. roots, foot at y.
+export function stump(g, x, y, season) {
+    // cut log: bark sides, the cut face with growth rings, roots
+    const B = ramp(0x7a4a30), W = ramp(0xd8a868), cx = x + 7;
+    g.rect(cx - 7, y - 10, 15, 10, INK);
+    g.rect(cx - 6, y - 8, 13, 8, B[2]);
+    g.rect(cx - 6, y - 8, 2, 8, B[3]);
+    g.rect(cx + 4, y - 8, 3, 8, B[1]);
+    for (let i = 0; i < 3; i++)
+        g.rect(cx - 3 + i * 3, y - 7 + (i % 2) * 2, 1, 4, B[1]);
+    // roots flaring out at the ground
+    g.rect(cx - 10, y - 2, 5, 2, INK);
+    g.rect(cx - 9, y - 2, 4, 1, B[2]);
+    g.rect(cx + 6, y - 3, 5, 3, INK);
+    g.rect(cx + 6, y - 2, 4, 1, B[1]);
+    // cut face
+    g.rect(cx - 6, y - 12, 13, 1, INK);
+    g.rect(cx - 7, y - 11, 15, 3, INK);
+    g.rect(cx - 5, y - 11, 11, 3, W[2]);
+    g.rect(cx - 6, y - 10, 13, 1, W[2]);
+    g.rect(cx - 3, y - 10, 7, 1, W[1]);
+    g.rect(cx - 1, y - 10, 3, 1, W[2]);
+    g.px(cx, y - 10, W[0]);
+    g.rect(cx - 4, y - 11, 4, 1, W[3]);
+    if (season === 'autumn' || season === 'summer') {
+        g.rect(cx + 7, y - 6, 4, 2, INK);
+        g.rect(cx + 7, y - 5, 3, 1, 0xd89048);
+    }
 }
 
 // Big round tree: thick trunk with roots, crown of leaf clumps. The

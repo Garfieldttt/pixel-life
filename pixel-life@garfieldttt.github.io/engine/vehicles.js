@@ -50,6 +50,7 @@ export function makeVehicle(type, env) {
 }
 
 function wheel(c, x, y, frame, r = 4) {
+    (c.wheels ??= []).push({x, y, r});
     const d = r * 2;
     for (let yy = 0; yy < d; yy++)
         for (let xx = 0; xx < d; xx++) {
@@ -228,6 +229,15 @@ function buildVehicle(v, frame) {
         driver(c, v, 57, 8);
         c.rect(0, 21, L, 3, 0x3a3a44);
         c.rect(L - 3, 16, 3, 2, 0xfff4c0);
+        // box panel seams, a rear door frame, grille and bumper on the cab
+        for (let i = 5; i < 50; i += 6)
+            c.rect(i, 1, 1, 19, sh(box, 0.1));
+        c.rect(0, 1, 2, 19, sh(box, 0.25));
+        c.rect(49, 1, 1, 19, sh(box, 0.3));
+        c.rect(52, 19, 16, 2, 0x8a8a96);
+        c.rect(64, 15, 4, 4, sh(col, 0.4));
+        c.rect(52, 6, 1, 15, sh(col, 0.3));
+        c.rect(53, 14, 8, 1, sh(col, 0.3));
         if (v.type === 'truck') {
             const logo = v.logo ??= pick([0xd84848, 0x4870c8, 0x58a060, 0xe8a830]);
             c.rect(6, 6, 36, 8, logo);
@@ -337,9 +347,51 @@ function buildVehicle(v, frame) {
     }
     // cars and bigger are drawn at half scale; bikes, scooters and the
     // tractor already match the people
-    if (!['tractor', 'bike', 'scooter'].includes(v.type))
+    if (!['tractor', 'bike', 'scooter'].includes(v.type)) {
+        const wheels = c.wheels;
         c = c.scaled(2);
+        polish(c, col, wheels, frame);
+    }
     return c.finish(INK);
+}
+
+// Details at full resolution on top of the doubled sprite: a lit top edge
+// on the paint, streaks on the glass and real wheels with tire, rim,
+// hub and bolts that turn with the frame.
+function polish(c, col, wheels, frame) {
+    const top = hi(col, 0.5), base = sh(col, 0.15);
+    for (let y = 0; y < c.h; y++)
+        for (let x = 0; x < c.w; x++) {
+            const v = c.get(x, y);
+            if (v === col && c.get(x, y - 1) === -1)
+                c.set(x, y, top);
+            else if (v === col && c.get(x, y + 1) !== col && c.get(x, y + 1) !== top && y > 0 && c.get(x, y + 1) !== -1 && c.get(x, y + 1) !== GLASS[1])
+                c.set(x, y, base);
+            else if (v === GLASS[1] && ((x + y) % 11 === 0 || (x + y) % 11 === 1))
+                c.set(x, y, GLASS[2]);
+        }
+    for (const w of wheels || []) {
+        const R = w.r * 2, cx = (w.x + w.r) * 2 - 0.5, cy = (w.y + w.r) * 2 - 0.5;
+        for (let y = Math.floor(cy - R); y <= cy + R; y++)
+            for (let x = Math.floor(cx - R); x <= cx + R; x++) {
+                const dx = x - cx, dy = y - cy, d = Math.sqrt(dx * dx + dy * dy);
+                if (d > R)
+                    continue;
+                let p = TIRE;
+                if (d > R - 1.3 && dx + dy < -R * 0.5)
+                    p = 0x4a4448; // light on the tread
+                else if (d < R * 0.55)
+                    p = d < 1.3 ? 0x5a5a64 : dx + dy < 0 ? RIM[1] : RIM[0];
+                else if (d < R * 0.62)
+                    p = 0x1a1418;
+                c.set(x, y, p);
+            }
+        // bolts, turned a little each frame
+        for (let k = 0; k < 4; k++) {
+            const a = k * Math.PI / 2 + frame * Math.PI / 4;
+            c.set(Math.round(cx + Math.cos(a) * R * 0.33), Math.round(cy + Math.sin(a) * R * 0.33), 0x6a6a74);
+        }
+    }
 }
 
 export function vehicleFigure(v, frame) {

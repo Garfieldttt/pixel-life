@@ -435,6 +435,10 @@ export class Town {
                         g.rect(x, b.top + f * FH - 2, w, 2, b.wallR[1]);
             }
         }
+        // shade under the eaves or the cornice
+        const wallTop = b.kind === 'cottage' ? this.base - b.wallH + 4 : b.top;
+        g.blend(x, wallTop, w, 3, 0x1a1028, 0.28);
+        g.blend(x, wallTop + 3, w, 2, 0x1a1028, 0.1);
         for (const win of b.wins) {
             A.windowFrame(g, win.x, win.y, win.w, win.h, b.frameR);
             if (b.kind === 'cottage' || b.kind === 'townhouse') {
@@ -749,60 +753,121 @@ export class Town {
         const x = b.x, y = this.h - 12;
         switch (b.kind) {
         case 'bench': {
-            const R = A.ramp(0x9a6a40);
-            g.rect(x - 1, y - 14, 26, 6, INK);
-            g.rect(x, y - 13, 24, 4, R[2]);
-            g.rect(x, y - 13, 24, 1, R[3]);
-            g.rect(x - 1, y - 8, 26, 4, INK);
-            g.rect(x, y - 7, 24, 2, R[2]);
-            g.rect(x + 2, y - 4, 2, 4, INK);
-            g.rect(x + 20, y - 4, 2, 4, INK);
+            // slatted park bench on cast iron legs with armrests
+            const R = A.ramp(0x9a6a40), I = 0x3a3440;
+            g.footShadow(x + 12, y, 30, 0.28);
+            for (const lx of [x + 1, x + 20]) {
+                g.rect(lx, y - 16, 3, 16, INK);
+                g.rect(lx + 1, y - 15, 1, 15, I);
+                g.rect(lx - 1, y - 1, 5, 1, INK);
+            }
+            for (const [sy, sh2] of [[y - 17, 2], [y - 14, 2]]) {
+                g.rect(x - 2, sy - 1, 28, sh2 + 2, INK);
+                g.rect(x - 1, sy, 26, sh2, R[2]);
+                g.rect(x - 1, sy, 26, 1, R[3]);
+            }
+            g.rect(x - 2, y - 9, 28, 4, INK);
+            g.rect(x - 1, y - 8, 26, 1, R[3]);
+            g.rect(x - 1, y - 7, 26, 1, R[1]);
+            for (const ax of [x - 3, x + 23]) {
+                g.rect(ax, y - 11, 4, 2, INK);
+                g.px(ax + 1, y - 10, I);
+            }
             b.seatY = y - 5;
             break;
         }
         case 'flowers': {
             if (env.season === 'winter')
                 break;
-            g.rect(x - 1, y - 6, 30, 7, INK);
-            g.rect(x, y - 5, 28, 5, 0x7a4a2a);
+            // raised bed with a stone edge, leafy clumps and blooms
+            const S = A.ramp(0xb0a898), L = A.leafRamp(env.season === 'autumn' ? 'summer' : env.season);
+            g.footShadow(x + 14, y, 32, 0.25);
+            g.rect(x - 1, y - 7, 30, 8, INK);
+            for (let i = 0; i < 28; i += 4) {
+                g.rect(x + i, y - 6, 3, 6, S[2]);
+                g.rect(x + i, y - 6, 3, 1, S[4]);
+                g.px(x + i + 2, y - 2, S[1]);
+            }
             const cols = env.season === 'autumn' ? [0xe08a30, 0xc85a20, 0xf0c040] : [0xe84860, 0xf8d048, 0xf0f0f0, 0xb860d8, 0xf890b0];
-            for (let i = 1; i < 27; i += 2) {
-                g.rect(x + i, y - 9, 2, 4, 0x4a9a3a);
-                g.rect(x + i, y - 10 - (i % 3), 2, 2, cols[(b.seed + i) % cols.length]);
+            for (let i = 1; i < 27; i += 3) {
+                const hgt = 3 + (b.seed + i) % 3;
+                g.rect(x + i - 1, y - 8 - hgt + 2, 4, hgt, L[1]);
+                g.rect(x + i, y - 9 - hgt + 2, 2, 2, L[2]);
+                const c = cols[(b.seed + i) % cols.length];
+                g.rect(x + i, y - 10 - hgt + 1, 2, 2, c);
+                g.px(x + i, y - 10 - hgt + 1, highlight(c, 0.5));
+                g.px(x + i + 1, y - 9 - hgt + 1, 0xf8e070);
             }
             break;
         }
         case 'fountain': {
-            const R = A.ramp(0xb8b0a8);
-            g.rect(x - 1, y - 9, 40, 10, INK);
-            g.rect(x, y - 8, 38, 8, R[2]);
-            g.rect(x, y - 8, 38, 2, R[3]);
-            g.rect(x + 3, y - 6, 32, 3, env.weather.snowCover > 0.3 ? 0xe8eef8 : 0x5a9ad8);
-            g.rect(x + 3, y - 6, 32, 1, 0x8ac0f0);
-            g.rect(x + 16, y - 22, 6, 14, INK);
-            g.rect(x + 17, y - 21, 4, 13, R[3]);
-            g.rect(x + 13, y - 24, 12, 3, INK);
-            g.rect(x + 14, y - 23, 10, 1, R[3]);
+            // two tiers: a wide stone basin and a raised bowl on a column
+            const R = A.ramp(0xb8b0a8), frozen = env.weather.snowCover > 0.3;
+            const W1 = frozen ? 0xe8eef8 : 0x5a9ad8, W2 = frozen ? 0xf4f8ff : 0x8ac0f0;
+            g.footShadow(x + 19, y, 44, 0.3);
+            g.rect(x - 1, y - 10, 40, 11, INK);
+            g.rect(x, y - 9, 38, 9, R[2]);
+            g.rect(x, y - 9, 38, 1, R[4]);
+            g.rect(x, y - 8, 38, 1, R[3]);
+            for (let i = 4; i < 38; i += 8)
+                g.rect(x + i, y - 6, 1, 6, R[1]);
+            g.rect(x, y - 1, 38, 1, R[1]);
+            g.rect(x + 2, y - 10, 34, 2, W1);
+            g.rect(x + 4, y - 10, 10, 1, W2);
+            // column and bowl
+            g.rect(x + 16, y - 24, 6, 14, INK);
+            g.rect(x + 17, y - 23, 4, 13, R[2]);
+            g.rect(x + 17, y - 23, 1, 13, R[4]);
+            g.rect(x + 10, y - 27, 18, 4, INK);
+            g.rect(x + 11, y - 26, 16, 2, R[3]);
+            g.rect(x + 12, y - 27, 14, 1, W1);
+            g.rect(x + 12, y - 24, 14, 1, R[1]);
+            g.rect(x + 18, y - 31, 2, 4, INK);
             b.fx = x + 19;
-            b.fy = y - 24;
+            b.fy = y - 31;
             break;
         }
-        case 'bin':
-            g.rect(x - 1, y - 12, 10, 12, INK);
-            g.rect(x, y - 11, 8, 11, 0x4a7a4a);
-            g.rect(x, y - 11, 8, 2, 0x6a9a6a);
+        case 'bin': {
+            // round street bin with a lid and metal hoops
+            const M = A.ramp(0x4a7a4a);
+            g.footShadow(x + 4, y, 12, 0.25);
+            g.rect(x - 1, y - 12, 11, 12, INK);
+            g.rect(x, y - 11, 9, 11, M[2]);
+            g.rect(x, y - 11, 2, 11, M[3]);
+            g.rect(x + 7, y - 11, 2, 11, M[1]);
+            g.rect(x, y - 8, 9, 1, M[0]);
+            g.rect(x, y - 3, 9, 1, M[0]);
+            g.rect(x - 2, y - 14, 13, 3, INK);
+            g.rect(x - 1, y - 13, 11, 1, M[3]);
+            g.rect(x + 3, y - 16, 3, 2, INK);
             break;
+        }
         case 'bushes':
             g.footShadow(x + 14, y, 30, 0.28);
             A.bush(g, x - 1, y, 30, A.leafRamp(env.season === 'autumn' ? 'summer' : env.season), b.seed);
             break;
         case 'sandbox': {
-            const R = A.ramp(0x9a6a40);
+            // wooden frame, heaped sand, a little castle, bucket and spade
+            const R = A.ramp(0x9a6a40), S = A.ramp(0xe8d090);
+            g.footShadow(x + 16, y, 36, 0.25);
             g.rect(x - 1, y - 7, 34, 8, INK);
             g.rect(x, y - 6, 32, 6, R[2]);
-            g.rect(x + 2, y - 5, 28, 4, 0xe8d090);
-            g.rect(x + 8, y - 7, 5, 3, 0xd84848);
-            g.rect(x + 20, y - 6, 3, 2, 0x4c7cd0);
+            g.rect(x, y - 6, 32, 1, R[3]);
+            g.rect(x + 2, y - 7, 28, 4, S[2]);
+            g.rect(x + 4, y - 8, 12, 1, S[2]);
+            g.rect(x + 5, y - 8, 6, 1, S[3]);
+            g.rect(x + 2, y - 4, 28, 1, S[1]);
+            // castle
+            g.rect(x + 18, y - 12, 7, 5, S[1]);
+            g.rect(x + 18, y - 12, 7, 1, S[3]);
+            g.px(x + 18, y - 13, S[1]);
+            g.px(x + 21, y - 13, S[1]);
+            g.px(x + 24, y - 13, S[1]);
+            // bucket and spade
+            g.rect(x + 7, y - 11, 5, 4, INK);
+            g.rect(x + 8, y - 10, 3, 3, 0xd84848);
+            g.px(x + 8, y - 10, 0xf08080);
+            g.line(x + 27, y - 14, x + 28, y - 8, 0x4c7cd0);
             break;
         }
         }
@@ -1851,17 +1916,89 @@ export class Town {
         for (const sy of [y + 9, y + Math.round(wh / 2) + 3, y + wh - 4]) {
             g.rect(x, sy, w, 2, shelf[1]);
             for (let i = 2; i < w - 2; i += 4) {
-                const gx = x + i, gy = sy;
+                const gx = x + i, gy = sy, k = Math.floor(i / 4), v = (k * 7 + sy) % 5;
                 switch (s.goods) {
-                case 'bread': g.rect(gx, gy - 3, 3, 3, 0xc88a40); g.px(gx + 1, gy - 3, 0xe8b060); break;
-                case 'cups': g.rect(gx, gy - 3, 2, 3, 0xf4f4f4); g.px(gx + 2, gy - 2, 0xf4f4f4); break;
-                case 'books': g.rect(gx, gy - 5, 3, 5, [0xd84848, 0x4870c8, 0x5cae5c, 0xe8a640][(i / 4) % 4]); break;
-                case 'flowers': g.rect(gx, gy - 2, 1, 2, 0x5cae5c); g.rect(gx - 1, gy - 4, 3, 2, [0xe85050, 0xf0d050, 0xf080c0, 0xc070e0][(i / 4) % 4]); break;
-                case 'bottles': g.rect(gx, gy - 6, 2, 6, [0x5a9a4a, 0x8a4a2a, 0x4a6ac0][(i / 4) % 3]); g.px(gx, gy - 7, 0x3a3a3a); break;
-                case 'mags': g.rect(gx, gy - 4, 3, 4, [0xf0d050, 0xe876a0, 0x60b0c8][(i / 4) % 3]); break;
-                case 'toys': g.rect(gx, gy - 3, 3, 3, [0xd84848, 0xf0d050, 0x4870c8, 0x5cae5c][(i / 4) % 4]); break;
-                case 'ice': g.rect(gx, gy - 3, 3, 3, [0xf8d8e8, 0xf8f0c0, 0x8a5a3a, 0xa8e0a8][(i / 4) % 4]); break;
-                case 'fruit': g.rect(gx, gy - 3, 3, 3, [0xd83030, 0xf0a030, 0x7ac040, 0xf0e050][(i / 4) % 4]); break;
+                case 'bread':
+                    // round loaves and a baguette now and then
+                    if (v === 0) {
+                        g.rect(gx - 1, gy - 2, 5, 2, 0xb87830);
+                        g.rect(gx, gy - 2, 3, 1, 0xe0a858);
+                    } else {
+                        g.rect(gx, gy - 3, 3, 3, 0xc88a40);
+                        g.rect(gx, gy - 3, 2, 1, 0xe8b868);
+                        g.px(gx + 1, gy - 2, 0x9a6020);
+                    }
+                    break;
+                case 'cups':
+                    g.rect(gx, gy - 3, 3, 3, [0xf4f4f4, 0xe8d8c8, 0x8ac0e8][v % 3]);
+                    g.px(gx + 3, gy - 2, 0xd8d8d8);
+                    g.rect(gx - 1, gy - 1, 5, 1, 0xd8d0c8);
+                    break;
+                case 'books': {
+                    // spines of different heights, each with a light edge
+                    for (let j = 0; j < 4; j++) {
+                        const c = [0xd84848, 0x4870c8, 0x5cae5c, 0xe8a640, 0x8a5ab8, 0x3a6a5a][(k * 3 + j) % 6], bh = 4 + (k + j * 2) % 3;
+                        g.rect(gx + j - 1, gy - bh, 1, bh, c);
+                        g.px(gx + j - 1, gy - bh, highlight(c, 0.4));
+                    }
+                    break;
+                }
+                case 'flowers': {
+                    g.rect(gx - 1, gy - 2, 3, 2, 0xb8683a);
+                    const c = [0xe85050, 0xf0d050, 0xf080c0, 0xc070e0][k % 4];
+                    g.rect(gx, gy - 4, 1, 2, 0x5cae5c);
+                    g.rect(gx - 1, gy - 6, 3, 2, c);
+                    g.px(gx, gy - 7, c);
+                    g.px(gx, gy - 6, 0xf8e070);
+                    break;
+                }
+                case 'bottles': {
+                    const c = [0x5a9a4a, 0x8a4a2a, 0x4a6ac0, 0xc8a040][k % 4];
+                    g.rect(gx, gy - 6, 2, 6, c);
+                    g.rect(gx, gy - 8, 1, 2, c);
+                    g.rect(gx, gy - 4, 2, 2, 0xf0e8d0);
+                    g.px(gx, gy - 6, highlight(c, 0.5));
+                    break;
+                }
+                case 'mags': {
+                    // magazines leaning in a rack, covers with a title band
+                    const c = [0xf0d050, 0xe876a0, 0x60b0c8, 0xd84848][k % 4];
+                    g.rect(gx - 1, gy - 5, 4, 5, c);
+                    g.rect(gx - 1, gy - 5, 4, 1, 0xf4f4f4);
+                    g.px(gx, gy - 3, 0x3a3a4a);
+                    g.px(gx + 1, gy - 2, highlight(c, 0.3));
+                    break;
+                }
+                case 'toys':
+                    if (v < 2) {
+                        g.rect(gx, gy - 3, 3, 3, [0xd84848, 0xf0d050, 0x4870c8][k % 3]);
+                        g.px(gx, gy - 3, 0xffffff);
+                    } else {
+                        // teddy
+                        g.rect(gx, gy - 4, 3, 4, 0xa8703a);
+                        g.px(gx - 1, gy - 4, 0xa8703a);
+                        g.px(gx + 3, gy - 4, 0xa8703a);
+                        g.px(gx + 1, gy - 3, 0x3a2420);
+                    }
+                    break;
+                case 'ice': {
+                    // tubs of gelato heaped up
+                    const c = [0xf8d8e8, 0xf8f0c0, 0x8a5a3a, 0xa8e0a8, 0xf0a0a0][k % 5];
+                    g.rect(gx - 1, gy - 2, 4, 2, 0xd8d8e0);
+                    g.rect(gx - 1, gy - 4, 4, 2, c);
+                    g.px(gx, gy - 5, c);
+                    g.px(gx - 1, gy - 4, highlight(c, 0.4));
+                    break;
+                }
+                case 'fruit': {
+                    const c = [0xd83030, 0xf0a030, 0x7ac040, 0xf0e050][k % 4];
+                    g.rect(gx - 1, gy - 2, 5, 2, 0x9a6a40);
+                    g.rect(gx - 1, gy - 4, 2, 2, c);
+                    g.rect(gx + 1, gy - 4, 2, 2, c);
+                    g.rect(gx, gy - 5, 2, 1, c);
+                    g.px(gx - 1, gy - 4, highlight(c, 0.5));
+                    break;
+                }
                 case 'oven':
                     if (i === 2) {
                         g.rect(x + 2, y + 1, 10, 8, 0x6a4a3a);
