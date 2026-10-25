@@ -520,6 +520,50 @@ export const GRASS = {
     winter: [0xa8b8d0, 0xc8d4e8, 0xe4ecf8, 0xf4f8ff, 0xffffff],
 };
 
+// Loose grass tufts drawn every frame over the static meadow so they can
+// sway in the wind; spots = [[x, y], ...] of their roots.
+export function makeTufts(spots, seed = 0) {
+    return spots.map(([x, y], i) => ({x: Math.round(x), y: Math.round(y), h: 6 + hash(i, 3, seed) % 4, k: 0.7 + hash(i, 5, seed) / 1600}));
+}
+
+export function drawTufts(g, tufts, season, weather) {
+    if (season === 'winter' || weather.snowCover > 0.3)
+        return;
+    // thousands of pixels each frame: shade the colors once, write directly
+    const C = GRASS[season].map(c => g.sh(c)), t = g.t, W = g.w, H = g.h;
+    for (const tf of tufts) {
+        if (tf.y >= H || tf.x < 3 || tf.x >= W - 3)
+            continue;
+        const lean = weather.lean(tf.x) * tf.k;
+        t.fill(C[0], tf.y * W + tf.x - 2, tf.y * W + tf.x + 3);
+        // five blades fanning out, the outer ones darker and shorter
+        for (let b = -2; b <= 2; b++) {
+            const h = tf.h - Math.abs(b) * 2 + (b === 1 ? 1 : 0), side = Math.abs(b) === 2;
+            for (let i = 0; i < h; i++) {
+                const k = (i + 1) / h, y = tf.y - 1 - i;
+                const x = tf.x + b + Math.round(b * k * 0.7 + lean * k * k * h * 0.45);
+                if (y >= 0 && x >= 0 && x < W)
+                    t[y * W + x] = i === h - 1 && !side ? C[4] : side ? C[1] : i < 2 ? C[2] : C[3];
+            }
+        }
+    }
+}
+
+// Row offsets for a tree sprite leaning by `lean` (from weather.lean):
+// the crown bends, the foot of the trunk stays. Only a real wind moves
+// a tree; null while it stands still.
+export function leanOffsets(s, lean) {
+    const bh = s.box[3], top = Math.sign(lean) * Math.max(0, Math.abs(lean) - 0.6) * bh / 30;
+    if (Math.abs(top) < 0.5)
+        return null;
+    const o = s.leanBuf = s.leanBuf || new Int8Array(bh);
+    for (let r = 0; r < bh; r++) {
+        const k = 1 - r / bh;
+        o[r] = Math.max(-7, Math.min(7, Math.round(top * k * k)));
+    }
+    return o;
+}
+
 // smooth value noise 0..1 on a grid of `cell` pixels
 function patchNoise(px, py, cell, seed) {
     const gx = Math.floor(px / cell), gy = Math.floor(py / cell);

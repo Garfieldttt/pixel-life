@@ -77,7 +77,7 @@ export class Town {
         this.buildBuildings(env);
         this.buildSkyline();
         this.buildProps();
-        this.layerA = this.layerB = this.layerC = this.layerT = null;
+        this.layerA = this.layerB = this.layerC = null;
         for (let i = 0; i < 40; i++)
             this._populate(env, true);
     }
@@ -261,6 +261,7 @@ export class Town {
         this.meadowFlowers = [];
         this.picnics = [];
         this.strollers = [];
+        this.tufts = [];
         if (H < 40)
             return;
         const taken = [];
@@ -299,6 +300,14 @@ export class Town {
             if (free(x, y - 4, 6, 6))
                 this.meadowFlowers.push({x, y, seed: randi(0, 1e6)});
         }
+        // grass tufts that sway in the wind, off the path, pond and props
+        const spots = [];
+        for (let i = Math.floor(W * (this.h - top) / 110); i > 0; i--) {
+            const x = randi(2, W - 3), y = randi(top, this.h - 14);
+            if (free(x - 3, y - 6, 7, 7) && !this.parkBits.some(b => y > this.h - 34 && x > b.x - 10 && x < b.x + 40))
+                spots.push([x, y]);
+        }
+        this.tufts = A.makeTufts(spots, randi(0, 1e6));
     }
 
     staticKey(env) {
@@ -316,13 +325,11 @@ export class Town {
             this.layerA = g.layer();
             this.layerB = g.layer();
             this.layerC = g.layer();
-            this.layerT = g.layer();
             this.scratch = g.layer();
         }
         this.layerA.fill(0);
         this.layerB.fill(0);
         this.layerC.fill(0);
-        this.layerT.fill(0);
         g.into(this.layerA, () => {
             this._drawSkyline(g, env);
             for (const b of this.buildings)
@@ -331,12 +338,19 @@ export class Town {
         });
         g.into(this.layerB, () => this._drawCurb(g, env));
         g.into(this.layerC, () => this._drawPark(g, env));
-        // park trees on their own layer, each with a mask, so people behind
-        // a tree stay behind it
+        // trees are sprites drawn each frame, so they can lean in the wind
+        // and people behind a park tree stay behind it
         this.scratch.fill(0);
-        const trees = [...this.parkTrees, ...this.meadowTrees].sort((a, b) => a.y - b.y);
-        for (const t of trees)
-            t.sprite = g.masked(this.layerT, this.scratch, [t.x - t.size * 1.6, t.y - t.size * 3.4, t.size * 3.2, t.size * 3.4 + 4],
+        const curb = this.roadTop - 3;
+        for (const t of this.curbTrees)
+            t.sprite = g.masked(null, this.scratch, [t.x - t.size * 2, curb - t.size * 3.4, t.size * 4, t.size * 3.4 + 4], () => {
+                g.rect(t.x - 8, curb - 3, 17, 3, INK);
+                g.rect(t.x - 7, curb - 3, 15, 2, 0x6a5a4a);
+                A.bigTree(g, t.x, curb - 3, t.size, env.season, t.seed, env.weather.snowCover);
+            });
+        this.trees = [...this.parkTrees, ...this.meadowTrees].sort((a, b) => a.y - b.y);
+        for (const t of this.trees)
+            t.sprite = g.masked(null, this.scratch, [t.x - t.size * 2, t.y - t.size * 3.4, t.size * 4, t.size * 3.4 + 4],
                 () => A.bigTree(g, t.x, t.y, t.size, env.season, t.seed, env.weather.snowCover));
     }
 
@@ -654,11 +668,6 @@ export class Town {
 
     _drawCurb(g, env) {
         const curb = this.roadTop - 3;
-        for (const t of this.curbTrees) {
-            g.rect(t.x - 8, curb - 3, 17, 3, INK);
-            g.rect(t.x - 7, curb - 3, 15, 2, 0x6a5a4a);
-            A.bigTree(g, t.x, curb - 3, t.size, env.season, t.seed, env.weather.snowCover);
-        }
         for (const l of this.lamps)
             this._lampPost(g, l.x, curb, env);
         // traffic light poles (heads are dynamic)
@@ -1305,12 +1314,15 @@ export class Town {
 
     // copy the park trees standing in front of feetY back over the box
     _behindTrees(g, x, top, w, h, feetY) {
-        const lit = g.litBuffer(this.layerT);
-        if (!lit)
-            return;
-        for (const t of [...this.parkTrees, ...this.meadowTrees])
+        for (const t of this.trees)
             if (t.sprite && t.y > feetY)
-                g.occlude(lit, t.sprite, x, top, w, h);
+                g.occlude(null, t.sprite, x, top, w, h);
+    }
+
+    _drawTrees(g, env, trees) {
+        for (const t of trees)
+            if (t.sprite)
+                g.drawSprite(t.sprite, A.leanOffsets(t.sprite, env.weather.lean(t.x)));
     }
 
     // grows from a snowball into a snowman with hat, scarf and carrot
@@ -1672,6 +1684,7 @@ export class Town {
             for (const b of flock)
                 if (b.y < this.roadTop || b.fly)
                     this._renderPigeon(g, b);
+        this._drawTrees(g, env, this.curbTrees);
         g.compose(this.layerB, this.roadTop - 80, this.roadTop + 1, true);
         this._renderTrafficLights(g, env);
         if (env.lampsOn) {
@@ -1717,7 +1730,8 @@ export class Town {
         }
         // park in front
         g.compose(this.layerC, this.parkTop - 80, this.h, true);
-        g.compose(this.layerT, this.parkTop - 160, this.h, true);
+        A.drawTufts(g, this.tufts, env.weather.snowCover > 0.3 ? 'winter' : env.season, env.weather);
+        this._drawTrees(g, env, this.trees);
         for (const b of this.parkBits) {
             if (b.fx !== undefined && env.weather.snowCover < 0.3) {
                 for (let i = 0; i < 10; i++) {

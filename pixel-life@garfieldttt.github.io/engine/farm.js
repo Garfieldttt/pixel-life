@@ -266,6 +266,14 @@ export class Farm {
                 this.bits.push({x, y, kind: weighted([['flowers', 6], ['bush', 3], ['rock', 0.5], ['stump', 0.5], ['mushrooms', 0.8], ['beehive', 0.12], ['weeds', 3], ['hay', 0.12]]), seed: randi(0, 1e6)});
         }
         this.bits.sort((a, b) => a.y - b.y);
+        // grass tufts that sway in the wind, on the open meadow only
+        const spots = [];
+        for (let i = 0; i < W * (this.roadTop - this.meadowTop) / 200; i++) {
+            const x = randi(4, W - 4), y = randi(this.meadowTop + 10, this.roadTop - 3);
+            if (!blocked(x, 4, y) && !this.trees.some(t => Math.abs(t.x - x) < t.s * 0.3 + 3 && Math.abs(t.y - y) < 4))
+                spots.push([x, y]);
+        }
+        this.tufts = A.makeTufts(spots, randi(0, 1e6));
         // animals
         this.cows = [];
         this.sheep = [];
@@ -296,7 +304,7 @@ export class Farm {
         this.kite = null;
         this.farmer = null;
         this.owl = this.trees.length ? {tree: this.trees[Math.floor(this.trees.length / 2)], t: 0} : null;
-        this.layerA = this.layerM = this.layerN = this.layerB = this.layerC = null;
+        this.layerA = this.layerM = this.layerB = this.layerC = null;
     }
 
     _animal(kind, [a, b]) {
@@ -313,19 +321,31 @@ export class Farm {
     }
 
     renderStatic(g, env) {
-        // A ground and far land, M meadow up to the windmill, N meadow in
-        // front of it, B farmyard, C field, pond and trees in front of the
-        // yard; moving things are drawn between them by depth
+        // A ground and far land, M meadow with the windmill, B farmyard, C
+        // field and things in front of the yard; moving things and the
+        // trees are drawn between them by depth
         if (!this.layerA)
-            for (const k of ['layerA', 'layerM', 'layerN', 'layerB', 'layerC'])
+            for (const k of ['layerA', 'layerM', 'layerB', 'layerC'])
                 this[k] = g.layer();
-        for (const k of ['layerA', 'layerM', 'layerN', 'layerB', 'layerC'])
+        for (const k of ['layerA', 'layerM', 'layerB', 'layerC'])
             this[k].fill(0);
         g.into(this.layerA, () => this._drawFar(g, env));
-        g.into(this.layerM, () => this._drawMeadow(g, env, false));
-        g.into(this.layerN, () => this._drawMeadow(g, env, true));
+        g.into(this.layerM, () => this._drawMeadow(g, env));
         g.into(this.layerB, () => this._drawFarm(g, env));
         g.into(this.layerC, () => this._drawFront(g, env));
+        // trees are sprites drawn each frame right after their layer, so
+        // they can lean in the wind
+        this.scratch = this.scratch || g.layer();
+        this.scratch.fill(0);
+        for (const t of this.trees)
+            t.sprite = g.masked(null, this.scratch, [t.x - t.s * 2, t.y - t.s * 3.3, t.s * 4, t.s * 3.3 + 6], () => this._tree(g, t, env));
+    }
+
+    // the trees with from <= y < to, back to front
+    _drawTrees(g, env, from, to) {
+        for (const t of this.trees)
+            if (t.y >= from && t.y < to && t.sprite)
+                g.drawSprite(t.sprite, A.leanOffsets(t.sprite, env.weather.lean(t.x)));
     }
 
     _snowy(env) {
@@ -429,21 +449,12 @@ export class Farm {
         g.footShadow(f.x + Math.floor(f.w * 0.6), f.y1 + 18, 10, 0.3);
     }
 
-    // the windmill between the trees behind and in front of it, the sails
-    // turn between the two layers
-    _drawMeadow(g, env, front) {
-        if (front) {
-            for (const t of this.trees)
-                if (t.y >= this.mill.y && t.y < this.G - 40)
-                    this._tree(g, t, env);
-            return;
-        }
+    // bits on the meadow and the windmill; its sails turn in front of the
+    // trees behind it
+    _drawMeadow(g, env) {
         for (const b of this.bits)
             if (b.y < this.G - 40)
                 this._bit(g, b, env);
-        for (const t of this.trees)
-            if (t.y < this.mill.y)
-                this._tree(g, t, env);
         this._windmill(g, env);
     }
 
@@ -638,9 +649,6 @@ export class Farm {
         for (const b of this.bits)
             if (b.y >= this.G - 40 && b.y < this.pasture.y1)
                 this._bit(g, b, env);
-        for (const t of this.trees)
-            if (t.y >= this.G - 40 && t.y < this.pasture.y1)
-                this._tree(g, t, env);
         // pasture back fence
         const p = this.pasture, fenceR = A.ramp(0xb07a48);
         A.fence(g, p.x1, p.y1, p.x2 - p.x1, fenceR);
@@ -720,9 +728,6 @@ export class Farm {
         for (const bb of this.bits)
             if (bb.y >= this.pasture.y1 && bb.y < this.yardFront)
                 this._bit(g, bb, env);
-        for (const t of this.trees)
-            if (t.y >= this.pasture.y1 && t.y < this.yardFront)
-                this._tree(g, t, env);
     }
 
     // everything standing in front of the farmyard walkers and the ducks
@@ -731,9 +736,6 @@ export class Farm {
         for (const bb of this.bits)
             if (bb.y >= this.yardFront)
                 this._bit(g, bb, env);
-        for (const t of this.trees)
-            if (t.y >= this.yardFront)
-                this._tree(g, t, env);
     }
 
     // red barn seen from the gable end: gambrel roof with white trim, a
@@ -1422,6 +1424,7 @@ export class Farm {
 
     renderDynamic(g, env) {
         const t = this.t;
+        A.drawTufts(g, this.tufts, this._season(env), env.weather);
         if (this.train)
             this._renderTrain(g, env);
         for (const w of this.wild) {
@@ -1433,6 +1436,7 @@ export class Farm {
                 g.pxE(w.dir > 0 ? w.x + f.w - 6 : w.x + 5, w.y - f.h + 4, 0xd0ff90);
         }
         g.compose(this.layerM, 0, this.h, true);
+        this._drawTrees(g, env, -1e9, this.mill.y);
         // windmill sails
         if (this.mill.hub) {
             const [hx, hy] = this.mill.hub;
@@ -1453,8 +1457,9 @@ export class Farm {
             g.rect(hx - 2, hy - 2, 5, 5, INK);
             g.rect(hx - 1, hy - 1, 3, 3, 0x8a5a38);
         }
-        g.compose(this.layerN, 0, this.h, true);
+        this._drawTrees(g, env, this.mill.y, this.pasture.y1);
         g.compose(this.layerB, 0, this.h, true);
+        this._drawTrees(g, env, this.pasture.y1, this.yardFront);
         // pond life
         const pd = this.pond;
         if (!this._snowy(env)) {
@@ -1525,6 +1530,7 @@ export class Farm {
                     g.blend(f.x + 18 + i * 2, f.y - 14 + ((t * 20 + i * 3) % 12), 1, 2, 0x8ac8f8, 0.8);
         }
         g.compose(this.layerC, 0, this.h, true);
+        this._drawTrees(g, env, this.yardFront, 1e9);
         // sprinkler in the morning
         if (this.sprinkler && env.hour > 6 && env.hour < 7.5 && !this._snowy(env)) {
             const {x, y} = this.sprinkler;

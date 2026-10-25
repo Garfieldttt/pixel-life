@@ -1,8 +1,10 @@
 // Base for top-down scenes: a tile terrain plus objects baked into one
 // static layer. Walkers are drawn over it in depth order, and objects in
 // front of a walker are copied back from the lit layer, so people
-// disappear behind trees and houses.
+// disappear behind trees and houses. Trees (sway) are kept as sprites as
+// well, so they can lean in the wind.
 import {Terrain, TILE, T} from './terrain.js';
+import {leanOffsets} from './art.js';
 import {Timers} from './timers.js';
 
 const COST = {[T.PATH]: 1, [T.PLAZA]: 1, [T.DECK]: 1, [T.STAIRS]: 1, [T.GRASS]: 4, [T.DIRT]: 2, [T.SAND]: 3, [T.TILLED]: 6};
@@ -25,8 +27,8 @@ export class World {
 
     // draw(g, env) paints the object with its base at y; hint = rough box
     // [x, y, w, h] it paints into; foot = tiles it blocks
-    add(y, draw, hint, foot = null, occlude = true) {
-        const o = {y, draw, hint, occlude, mask: null, box: null};
+    add(y, draw, hint, foot = null, occlude = true, sway = false) {
+        const o = {y, draw, hint, occlude, sway, mask: null, box: null, sprite: null};
         this.objects.push(o);
         if (foot)
             for (let ty = foot[1]; ty < foot[1] + foot[3]; ty++)
@@ -47,19 +49,88 @@ export class World {
     renderStatic(g, env) {
         if (!this.layerA) {
             this.layerA = g.layer();
+            this.layerBG = g.layer();
             this.scratch = g.layer();
         }
-        const A = this.layerA, S = this.scratch;
+        const A = this.layerA, BG = this.layerBG, S = this.scratch, W = this.w;
         A.fill(0);
         g.into(A, () => this.terrain.render(g, env));
         g.into(A, () => this.renderGround(g, env));
+        BG.set(A);
         this.objects.sort((a, b) => a.y - b.y);
-        // each object goes through the scratch layer once to get its mask
+        // each object goes through the scratch layer once to get its mask;
+        // BG gets everything but the trees
         S.fill(0);
         for (const o of this.objects) {
-            const sp = g.masked(A, S, o.hint, () => o.draw(g, env));
+            const sp = g.masked(o.sway ? null : A, S, o.hint, () => o.draw(g, env));
             o.box = sp && sp.box;
             o.mask = sp && sp.mask;
+            o.sprite = o.sway ? sp : null;
+            if (!sp)
+                continue;
+            if (o.sway) {
+                g.into(A, () => g.drawSprite(sp));
+                continue;
+            }
+            const [bx, by, bw, bh] = sp.box;
+            for (let y = 0; y < bh; y++)
+                for (let x = 0; x < bw; x++)
+                    if (sp.mask[y * bw + x])
+                        BG[(by + y) * W + bx + x] = A[(by + y) * W + bx + x];
+        }
+    }
+
+    // Trees leaning in the wind: around each moving tree the screen is
+    // rebuilt from the layer without trees, then every object there is
+    // put back over it, back to front.
+    sway(g, env) {
+        const moving = [];
+        for (const o of this.objects) {
+            if (!o.sprite)
+                continue;
+            const [bx, , bw] = o.sprite.box;
+            o.sprite.offs = leanOffsets(o.sprite, env.weather.lean(bx + bw / 2));
+            if (o.sprite.offs)
+                moving.push(o);
+        }
+        if (!moving.length)
+            return;
+        // overlapping crowns (the forest) merge into one area, so each
+        // tree is drawn once
+        const rects = [];
+        for (const m of moving) {
+            const [bx, by, bw, bh] = m.box;
+            let r = [Math.max(0, bx - 8), Math.max(0, by), Math.min(this.w, bx + bw + 8), Math.min(this.h, by + bh)];
+            for (let i = rects.length - 1; i >= 0; i--) {
+                const q = rects[i];
+                if (q[0] < r[2] && r[0] < q[2] && q[1] < r[3] && r[1] < q[3]) {
+                    r = [Math.min(q[0], r[0]), Math.min(q[1], r[1]), Math.max(q[2], r[2]), Math.max(q[3], r[3])];
+                    rects.splice(i, 1);
+                    i = rects.length;
+                }
+            }
+            rects.push(r);
+        }
+        const bg = g.litBuffer(this.layerBG), W = this.w, t = g.t;
+        for (const [x1, y1, x2, y2] of rects) {
+            for (let y = y1; y < y2; y++)
+                t.set(bg.subarray(y * W + x1, y * W + x2), y * W + x1);
+            this._redraw(g, bg, -Infinity, x1, y1, x2 - x1, y2 - y1);
+        }
+    }
+
+    // objects standing in front of feetY over the box, back to front
+    _redraw(g, bg, feetY, x, top, w, h) {
+        for (const o of this.objects) {
+            if (!o.box || o.y <= feetY)
+                continue;
+            const [bx, by, bw, bh] = o.box;
+            if (bx > x + w || bx + bw < x || by > top + h || by + bh < top)
+                continue;
+            if (o.sprite)
+                g.drawSprite(o.sprite, o.sprite.offs, [x, top, w, h]);
+            else
+                g.occlude(bg, o, x, top, w, h);
         }
     }
 
@@ -68,12 +139,15 @@ export class World {
 
     // Copy objects in front of (x..x+w, y-h..y, feet at y) back over a walker.
     occlude(g, x, top, w, h, feetY) {
-        const lit = g.litBuffer(this.layerA);
-        if (!lit)
-            return;
-        for (const o of this.objects)
-            if (o.occlude && o.box && o.y > feetY)
-                g.occlude(lit, o, x, top, w, h);
+        const bg = g.litBuffer(this.layerBG);
+        for (const o of this.objects) {
+            if (!o.occlude || !o.box || o.y <= feetY)
+                continue;
+            if (o.sprite)
+                g.drawSprite(o.sprite, o.sprite.offs, [x, top, w, h]);
+            else
+                g.occlude(bg, o, x, top, w, h);
+        }
     }
 
     // Cheapest tile path (paths preferred over grass), 4-neighbour Dijkstra.

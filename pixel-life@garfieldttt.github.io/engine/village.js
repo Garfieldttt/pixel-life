@@ -144,7 +144,7 @@ export class Village extends World {
             const size = treeSize(26, 34), bx = x * TILE + randi(0, 10), by = (ty + 1) * TILE - randi(0, 8);
             const pine = chance(0.4), seed = randi(0, 1e6);
             this.add(by, (g, e) => (pine ? O.pine(g, bx, by, Math.round(size * 1.1), this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), seed, e.weather.snowCover)),
-                [bx - size * 1.6, by - size * 3.4, size * 3.2, size * 3.4]);
+                [bx - size * 2, by - size * 3.4, size * 4, size * 3.4], null, true, true);
         }
         // plaza centerpiece and furniture
         const cx = (px + pw / 2) * TILE, cy = (py + Math.ceil(ph / 2)) * TILE + 6;
@@ -215,7 +215,7 @@ export class Village extends World {
                 const mx = x + (tw >> 1), bx = mx * TILE + 8, by = y * TILE + 14, seed = randi(0, 1e6);
                 const kind = weighted([['oak', 4], ['maple', 2], ['fruit', 2], ['pine', 1.5]]);
                 this.add(by, (g, e) => (kind === 'pine' ? O.pine(g, bx, by, Math.round(size * 1.1), this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), kind === 'fruit' ? seed - (seed % 4) + 1 : seed, e.weather.snowCover)),
-                    [bx - size * 1.6, by - size * 3.4, size * 3.2, size * 3.4 + 4], [mx, y, 1, 1]);
+                    [bx - size * 2, by - size * 3.4, size * 4, size * 3.4 + 4], [mx, y, 1, 1], true, true);
             });
         }
         // a bush fills two by two tiles, so walkers go around all of it
@@ -278,6 +278,14 @@ export class Village extends World {
             for (let x = 0; x < C; x++)
                 if (ter.get(x, y) === T.WATER)
                     this.waterTiles.push([x, y, randi(0, 1000)]);
+        // grass tufts that sway in the wind; renderStatic keeps the ones no
+        // object covers
+        this._tuftSpots = [];
+        for (let y = mainY + 2; y < R; y++)
+            for (let x = 0; x < C; x++)
+                if (ter.get(x, y) === T.GRASS && chance(0.7))
+                    this._tuftSpots.push([x * TILE + randi(3, 13), y * TILE + randi(4, 15)]);
+        this._tuftSeed = randi(0, 1e6);
         // ducks start on open water, never on the pier or under the boat
         const nDucks = randi(2, 5);
         for (let i = 0; i < 200 && this.ducks.length < nDucks && this.waterTiles.length; i++) {
@@ -291,6 +299,26 @@ export class Village extends World {
 
     _season(env) {
         return env.weather.snowCover > 0.3 ? 'winter' : env.season;
+    }
+
+    renderStatic(g, env) {
+        super.renderStatic(g, env);
+        this.tufts = A.makeTufts(this._tuftSpots.filter(([x, y]) => !this._covered(x - 10, y - 11, 21, 13)), this._tuftSeed);
+    }
+
+    // does any object paint into the box (x, y, w, h)?
+    _covered(x, y, w, h) {
+        for (const o of this.objects) {
+            if (!o.box)
+                continue;
+            const [bx, by, bw, bh] = o.box;
+            const x1 = Math.max(bx, x), x2 = Math.min(bx + bw, x + w), y1 = Math.max(by, y), y2 = Math.min(by + bh, y + h);
+            for (let yy = y1; yy < y2; yy++)
+                for (let xx = x1; xx < x2; xx++)
+                    if (o.mask[(yy - by) * bw + xx - bx])
+                        return true;
+        }
+        return false;
     }
 
     _house(tx, top, wT, base, mainY, env) {
@@ -821,6 +849,8 @@ export class Village extends World {
 
     renderDynamic(g, env) {
         const t = this.realT;
+        this.sway(g, env);
+        A.drawTufts(g, this.tufts, this._season(env), env.weather);
         // water: drifting wave glints and shore foam
         if (this._season(env) !== 'winter' || env.weather.snowCover < 0.6) {
             const glint = mix(WATER[3], 0xffffff, 0.45);

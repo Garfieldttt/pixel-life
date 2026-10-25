@@ -99,11 +99,16 @@ export class Gfx {
         const W = this.w;
         const s = Math.max(0, Math.floor(y1)) * W, e = Math.min(this.h, Math.ceil(y2)) * W;
         const runs = this._runs(layer);
-        if (!lit || (this.ar === 1 && this.ag === 1 && this.ab === 1)) {
-            this._copyRuns(layer, runs, s, e);
-            return;
-        }
-        // the lit copy is cached until the light or the layer changes
+        this._copyRuns(lit ? this.litBuffer(layer) : layer, runs, s, e);
+    }
+
+    // The layer in the current light, as compose(..., true) puts it on
+    // screen; in full daylight that is the layer itself. The lit copy is
+    // cached until the light or the layer changes.
+    litBuffer(layer) {
+        if (this.ar === 1 && this.ag === 1 && this.ab === 1)
+            return layer;
+        const runs = this._runs(layer);
         this.litCache = this.litCache || new WeakMap();
         const key = this._luts().lutKey + '|' + this.layerVersion;
         let c = this.litCache.get(layer);
@@ -122,7 +127,7 @@ export class Gfx {
             c = {key, buf};
             this.litCache.set(layer, c);
         }
-        this._copyRuns(c.buf, runs, s, e);
+        return c.buf;
     }
 
     // Start/end index pairs of the non-transparent stretches of a layer,
@@ -158,19 +163,11 @@ export class Gfx {
         }
     }
 
-    // The layer as compose(..., true) put it on screen this frame; in full
-    // daylight compose copies the layer itself and keeps no lit copy.
-    litBuffer(layer) {
-        if (this.ar === 1 && this.ag === 1 && this.ab === 1)
-            return layer;
-        const c = this.litCache && this.litCache.get(layer);
-        return c && c.key === this._luts().lutKey + '|' + this.layerVersion ? c.buf : null;
-    }
-
     // Draw one object through the empty scratch layer into target and
     // return its pixel mask {box, mask} (null if nothing was drawn); hint
     // = rough box [x, y, w, h] it paints into. Walkers behind it get the
-    // masked pixels copied back with occlude().
+    // masked pixels copied back with occlude(). Without a target the
+    // pixels are kept as a sprite (px) for drawSprite().
     masked(target, scratch, hint, draw) {
         const W = this.w, H = this.h, S = scratch;
         this.into(S, draw);
@@ -199,17 +196,20 @@ export class Gfx {
         let res = null;
         if (x2 >= 0) {
             const bw = x2 - x1 + 1, bh = y2 - y1 + 1;
-            const mask = new Uint8Array(bw * bh);
+            const mask = new Uint8Array(bw * bh), px = target ? null : new Uint32Array(bw * bh);
             for (let y = y1; y <= y2; y++) {
                 for (let x = x1; x <= x2; x++) {
                     const i = y * W + x, p = S[i];
                     if (p) {
-                        target[i] = p;
+                        if (px)
+                            px[(y - y1) * bw + (x - x1)] = p;
+                        else
+                            target[i] = p;
                         mask[(y - y1) * bw + (x - x1)] = 1;
                     }
                 }
             }
-            res = {box: [x1, y1, bw, bh], mask};
+            res = {box: [x1, y1, bw, bh], mask, px};
         }
         for (let y = sy1; y < sy2; y++)
             S.fill(0, y * W + sx1, y * W + sx2);
@@ -217,8 +217,13 @@ export class Gfx {
     }
 
     // Copy the masked pixels of s (from masked()) from the on-screen copy of its
-    // layer (litBuffer) back over the box x..x+w, top..top+h.
+    // layer (litBuffer) back over the box x..x+w, top..top+h; a sprite
+    // brings its own pixels as drawSprite() last put them.
     occlude(lit, s, x, top, w, h) {
+        if (s.px) {
+            this.drawSprite(s, s.offs, [x, top, w, h]);
+            return;
+        }
         const [bx, by, bw, bh] = s.box;
         if (bx > x + w || bx + bw < x || by > top + h || by + bh < top)
             return;
@@ -229,6 +234,43 @@ export class Gfx {
             for (let xx = x1; xx < x2; xx++)
                 if (s.mask[(yy - by) * bw + (xx - bx)])
                     t[yy * W + xx] = lit[yy * W + xx];
+    }
+
+    // A sprite from masked() in the current light; offs = optional
+    // horizontal offset per sprite row (a tree leaning in the wind), clip =
+    // [x, y, w, h] limits it to that box.
+    drawSprite(s, offs = null, clip = null) {
+        let src = s.px;
+        if (this.ar !== 1 || this.ag !== 1 || this.ab !== 1) {
+            const key = this._luts().lutKey;
+            if (s.litKey !== key) {
+                const {lr, lg, lb} = this;
+                s.lit = s.lit || new Uint32Array(src.length);
+                for (let i = 0; i < src.length; i++) {
+                    const p = src[i];
+                    s.lit[i] = !p || (p >>> 24) === 254 ? p : (0xff000000 | lb[(p >> 16) & 255] | lg[(p >> 8) & 255] | lr[p & 255]) >>> 0;
+                }
+                s.litKey = key;
+            }
+            src = s.lit;
+        }
+        s.offs = offs;
+        const [bx, by, bw, bh] = s.box, W = this.w, t = this.t;
+        let cx1 = 0, cy1 = 0, cx2 = W, cy2 = this.h;
+        if (clip) {
+            cx1 = Math.max(0, Math.floor(clip[0]));
+            cy1 = Math.max(0, Math.floor(clip[1]));
+            cx2 = Math.min(W, Math.ceil(clip[0] + clip[2]));
+            cy2 = Math.min(this.h, Math.ceil(clip[1] + clip[3]));
+        }
+        for (let r = Math.max(0, cy1 - by); r < bh && by + r < cy2; r++) {
+            const row = (by + r) * W, dx = bx + (offs ? offs[r] : 0);
+            for (let c = Math.max(0, cx1 - dx); c < bw && dx + c < cx2; c++) {
+                const p = src[r * bw + c];
+                if (p)
+                    t[row + dx + c] = p;
+            }
+        }
     }
 
     _luts() {

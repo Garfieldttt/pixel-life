@@ -3,14 +3,14 @@
 import {rand, chance, weighted, approach, clamp} from './util.js';
 
 const TYPES = {
-    clear: {clouds: 0.08, rain: 0, snow: 0, fog: 0, dim: 0},
-    partly: {clouds: 0.45, rain: 0, snow: 0, fog: 0, dim: 0.05},
-    overcast: {clouds: 0.95, rain: 0, snow: 0, fog: 0, dim: 0.22},
-    drizzle: {clouds: 0.9, rain: 0.35, snow: 0, fog: 0.1, dim: 0.22},
-    rain: {clouds: 1, rain: 1, snow: 0, fog: 0.1, dim: 0.32},
-    storm: {clouds: 1, rain: 1.6, snow: 0, fog: 0, dim: 0.45},
-    snow: {clouds: 1, rain: 0, snow: 1, fog: 0.1, dim: 0.2},
-    fog: {clouds: 0.5, rain: 0, snow: 0, fog: 1, dim: 0.15},
+    clear: {clouds: 0.08, rain: 0, snow: 0, fog: 0, dim: 0, breeze: 0.3},
+    partly: {clouds: 0.45, rain: 0, snow: 0, fog: 0, dim: 0.05, breeze: 0.45},
+    overcast: {clouds: 0.95, rain: 0, snow: 0, fog: 0, dim: 0.22, breeze: 0.55},
+    drizzle: {clouds: 0.9, rain: 0.35, snow: 0, fog: 0.1, dim: 0.22, breeze: 0.5},
+    rain: {clouds: 1, rain: 1, snow: 0, fog: 0.1, dim: 0.32, breeze: 0.8},
+    storm: {clouds: 1, rain: 1.6, snow: 0, fog: 0, dim: 0.45, breeze: 1.6},
+    snow: {clouds: 1, rain: 0, snow: 1, fog: 0.1, dim: 0.2, breeze: 0.5},
+    fog: {clouds: 0.5, rain: 0, snow: 0, fog: 1, dim: 0.15, breeze: 0.1},
 };
 
 const WEIGHTS = {
@@ -36,6 +36,16 @@ export class Weather {
         this.drops = [];
         this.flakes = [];
         this.fixed = null;
+        this.t = 0;
+    }
+
+    // How far grass and trees at x lean right now, signed with the wind
+    // direction: a steady push plus gusts that roll across the screen and
+    // a little flutter. About 0.1 on a calm day, up to 2.5 in a storm.
+    lean(x) {
+        const dir = this.wind < 0 ? -1 : 1, s = this.v.breeze * (0.6 + Math.min(1.5, Math.abs(this.wind)) * 0.4);
+        const gust = 0.5 + 0.5 * Math.sin(x * 0.011 - dir * this.t * 1.3) * Math.sin(this.t * 0.37 + x * 0.003);
+        return dir * s * (0.3 + 0.9 * gust) + s * 0.2 * Math.sin(this.t * 2.6 + x * 0.23);
     }
 
     // a weather type chosen in the settings, or null to follow the season
@@ -82,6 +92,7 @@ export class Weather {
         if (this.rainbow > 0)
             this.rainbow = Math.max(0, this.rainbow - dt / 900);
 
+        this.t += real;
         this.flash = Math.max(0, this.flash - real * 3);
         if (this.type === 'storm' && this.v.rain > 1 && chance(real / 12)) {
             this.flash = 1;
