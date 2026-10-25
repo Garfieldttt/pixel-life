@@ -141,7 +141,7 @@ function buildAnimal(kind, a, b, pose) {
 }
 
 const CACHE = new Map();
-function animalFigure(kind, a, b, pose) {
+export function animalFigure(kind, a, b, pose) {
     const key = `${kind}:${a}:${b}:${pose}`;
     let f = CACHE.get(key);
     if (!f) {

@@ -18,18 +18,25 @@ const TYPES = {
     retired: () => ({wake: rand(5.8, 7.8), leave: rand(9.5, 10.5), back: rand(11.5, 13), sleep: rand(20.8, 22.8), weekendHome: 0.8}),
     owl: () => ({wake: rand(11, 13.5), leave: rand(14, 16), back: rand(17, 19), sleep: rand(27, 29), weekendHome: 0.6}),
     shift: () => ({wake: rand(13, 15), leave: rand(20.5, 21.5), back: rand(29.5, 30.5), sleep: rand(30.6, 31.5), weekendHome: 0.4}),
+    // medieval town: up with the morning bell, abed soon after curfew
+    craft: () => ({wake: rand(4.6, 6), leave: 99, back: 99, sleep: rand(20.6, 22), weekendHome: 1}),
+    field: () => ({wake: rand(4.3, 5.5), leave: rand(5.8, 6.8), back: rand(17.5, 19), sleep: rand(20.3, 21.5), weekendHome: 0.8}),
+    wealthy: () => ({wake: rand(6, 7.5), leave: rand(9, 11), back: rand(12, 15), sleep: rand(21.5, 23), weekendHome: 0.6}),
 };
 
 export class Household {
-    constructor() {
-        this.kind = weighted([['worker', 5], ['family', 3], ['student', 2], ['retired', 2], ['owl', 1], ['shift', 0.6]]);
+    constructor(era = 'modern') {
+        this.kind = era === 'medieval'
+            ? weighted([['craft', 5], ['field', 3], ['wealthy', 1]])
+            : weighted([['worker', 5], ['family', 3], ['student', 2], ['retired', 2], ['owl', 1], ['shift', 0.6]]);
+        this.era = era;
         Object.assign(this, TYPES[this.kind]());
-        this.lamp = pick(LAMPS);
-        this.wall = pick(WALLS);
+        this.lamp = era === 'medieval' ? pick([0xffb860, 0xffc070, 0xffa850]) : pick(LAMPS);
+        this.wall = era === 'medieval' ? pick([0xb8a080, 0xa89070, 0xc8b090, 0xb09878]) : pick(WALLS);
         this.curtain = pick(CURTAINS);
         this.cat = chance(0.3) ? makeCat() : null;
         this.partyLover = chance(0.08);
-        this.gamer = chance(0.15);
+        this.gamer = era !== 'medieval' && chance(0.15);
         this.people = this.kind === 'family' ? randi(3, 4) : randi(1, 2);
         this.hair = pick([0x3a2418, 0x6a3c20, 0xe8c060, 0x24202a, 0xc04030, 0xd0d0d0]);
         this.outage = 0;
@@ -80,6 +87,14 @@ export class Win {
         // only a few households put a pumpkin in the window for Halloween
         this.halloween = chance(0.06);
         this.xmas = chance(0.3) ? pick(['star', 'candles', 'lights']) : null;
+        if (kind === 'medieval') {
+            // horn or oiled cloth in most windows, leaded glass in a few;
+            // wooden shutters closed for the night
+            this.curtains = 'none';
+            this.halloween = false;
+            this.xmas = chance(0.5) ? 'candles' : null;
+            this.leaded = chance(0.22);
+        }
         this.flicker = 0;
         this.decide(null);
     }
@@ -102,12 +117,13 @@ export class Win {
         if (this.kind === 'shop')
             return;
         const st = hh.state(env);
+        const medieval = this.kind === 'medieval';
         const h = env.hour;
         const needLight = env.dark > 0.35 || env.weather.v.dim > 0.3;
         let p = 0;
         if (st === 'sleep') {
             p = chance(0.04) ? 1 : 0; // night bathroom trip
-            this.blinds = chance(0.5);
+            this.blinds = medieval || chance(0.5);
         } else if (st === 'away') {
             p = chance(0.03) ? 1 : 0; // forgot to switch off
             this.blinds = false;
@@ -130,7 +146,11 @@ export class Win {
         this.visible = !this.lit && st === 'home' && !needLight && chance(0.45);
         if (this.lit || this.visible) {
             const weekendNight = (env.weekday === 5 || env.weekday === 6) && (h > 20 || h < 2);
-            const acts = [
+            const acts = medieval ? [
+                ['none', 3], ['walker', 4], ['cook', this.role === 'kitchen' ? 6 : 1], ['read', hh.kind === 'wealthy' ? 2 : 0.3],
+                ['window', 1.5], ['couple', hh.people > 1 ? 1.5 : 0], ['wave', 0.3], ['spin', this.role === 'living' ? 2 : 0.5],
+                ['party', this.role === 'tavern' ? 10 : 0],
+            ] : [
                 ['none', 3], ['walker', 4], ['tv', this.role === 'living' && h > 17 ? 6 : 1],
                 ['cook', this.role === 'kitchen' ? 6 : 0], ['read', 2], ['window', 1.5],
                 ['couple', hh.people > 1 ? 1.5 : 0], ['wave', 0.3], ['dance', 0.6],
@@ -170,7 +190,24 @@ export class Win {
         if (this.kind === 'shop')
             return;
         const fr = this.frameR || [0x5a3420, 0x7a4a30, 0x9a6440, 0xb88050, 0xd8a070];
-        if (!this.lit && !this.visible) {
+        const medieval = this.kind === 'medieval';
+        if (medieval && !this.lit && !this.visible) {
+            if (this.blinds) {
+                // closed wooden shutters
+                g.rect(x, y, w, h, 0x6a4a2a);
+                for (let i = 0; i < w; i += 4)
+                    g.rect(x + i, y, 1, h, 0x4a3018);
+                g.rect(x, y + 3, w, 1, 0x3a2410);
+                g.rect(x, y + h - 4, w, 1, 0x3a2410);
+                g.rect(x + Math.floor(w / 2), y, 1, h, INK);
+            } else {
+                for (let i = 0; i < h; i++)
+                    g.rect(x, y + i, w, 1, mix(0x2a2018, 0x4a3828, i / h));
+                if (this.leaded)
+                    for (let i = 0; i < h; i++)
+                        g.rect(x, y + i, w, 1, mix(mix(0x3a4846, env.skyBottom, 0.22), 0x8a9a94, i < h / 3 && night < 0.5 ? 0.25 : 0));
+            }
+        } else if (!this.lit && !this.visible) {
             windowGlass(g, x, y, w, h, env.skyBottom, night > 0.5);
             if (this.blinds) {
                 for (let i = 0; i < h - 2; i += 2)
@@ -192,7 +229,11 @@ export class Win {
                 R(x + 2, y + 4, 4, 3, hh.picture);
             if (hh.shelf)
                 R(x + w - 7, y + 5, 5, 1, shadow(wallC, 0.4));
-            if (lit && this.act !== 'party' && this.act !== 'tv') {
+            if (lit && this.kind === 'medieval') {
+                // a candle on the sill
+                R(x + w - 5, y + h - 7, 2, 3, 0xf4ecd8);
+                g.pxE(x + w - 5, y + h - 8 - (Math.floor(this.t * 7) % 2), 0xffe090);
+            } else if (lit && this.act !== 'party' && this.act !== 'tv') {
                 R(x + w - 4, y + h - 9, 1, 5, shadow(wallC, 0.5));
                 R(x + w - 6, y + h - 11, 5, 2, highlight(lamp, 0.5));
             }
@@ -228,7 +269,19 @@ export class Win {
                 curtain(x, w);
             }
         }
-        windowMullions(g, x, y, w, h, fr);
+        if (medieval) {
+            if (this.leaded && !(this.blinds && !this.lit && !this.visible)) {
+                // diamond lattice of lead cames
+                for (let yy = 0; yy < h; yy++)
+                    for (let xx = 0; xx < w; xx++)
+                        if ((xx + yy) % 5 === 0 || (xx - yy + 600) % 5 === 0)
+                            g.px(x + xx, y + yy, 0x2a2a30);
+            } else if (!this.blinds || this.lit || this.visible) {
+                g.rect(x + Math.floor(w / 2), y, 1, h, fr[1]);
+            }
+        } else {
+            windowMullions(g, x, y, w, h, fr);
+        }
         if (this.lit && night > 0.3) {
             const lamp = this._lampColor(env);
             // glow cost grows with the area; kept at the size it had for
@@ -282,6 +335,9 @@ export class Win {
             return mix(this.hh.lamp, [0xff50a0, 0x50a0ff, 0x60ffa0][Math.floor(this.t / 2) % 3], 0.45);
         if (this.kind === 'office')
             return 0xf0f4ff;
+        if (this.kind === 'medieval')
+            // candle and hearth light flickers
+            return mix(this.hh.lamp, 0xff9040, 0.12 + 0.12 * Math.sin(this.t * 9 + this.x) * Math.sin(this.t * 2.3));
         return this.hh.lamp;
     }
 
@@ -354,6 +410,14 @@ export class Win {
         case 'plantcare':
             person(x + w - 8, bottom - 12);
             break;
+        case 'spin': {
+            // sitting at the spinning wheel
+            person(x + 1, bottom - 8);
+            const cx = x + w - 6, cy = bottom - 6, a = this.t * 3;
+            for (let i = 0; i < 4; i++)
+                drawBack(Math.round(cx + Math.cos(a + i * 1.57) * 3), Math.round(cy + Math.sin(a + i * 1.57) * 3), 1, 1, sil);
+            break;
+        }
         }
     }
 }

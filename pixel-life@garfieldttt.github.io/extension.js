@@ -174,7 +174,7 @@ export default class PixelLifeExtension extends Extension {
             return () => items.forEach(i => i.setOrnament(i._value === this._settings.get_string(key)
                 ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT));
         };
-        const syncScene = choice('motif', [['village', 'Village by the lake'], ['city', 'Big city'], ['country', 'Countryside'], ['space', 'Space'], ['underwater', 'Under the sea'], ['auto', 'Alternate scenes']]);
+        const syncScene = choice('motif', [['village', 'Village by the lake'], ['city', 'Big city'], ['country', 'Countryside'], ['medieval', 'Medieval town'], ['space', 'Space'], ['underwater', 'Under the sea'], ['auto', 'Alternate scenes']]);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         const syncClock = choice('clock-style', [['none', 'No clock'], ['infobox', 'Info box clock'], ['digital', 'Digital clock'], ['analog', 'Analog clock']]);
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());

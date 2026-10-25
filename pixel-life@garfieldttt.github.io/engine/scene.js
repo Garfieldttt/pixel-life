@@ -10,9 +10,10 @@ import {Farm} from './farm.js';
 import {Village} from './village.js';
 import {Space} from './space.js';
 import {Deep} from './deep.js';
+import {Medieval} from './medieval.js';
 import {drawClock} from './clock.js';
 
-export const MOTIFS = {village: Village, city: Town, country: Farm, space: Space, underwater: Deep};
+export const MOTIFS = {village: Village, city: Town, country: Farm, medieval: Medieval, space: Space, underwater: Deep};
 
 export class Engine {
     constructor(width, height, opts = {}) {
@@ -43,6 +44,8 @@ export class Engine {
             ? pick(Object.keys(MOTIFS).filter(k => !this.motif || k !== this.motif.name))
             : name;
         this.motif = new MOTIFS[pickName](this.w, this.h, this.env);
+        // the sky keeps to the era of the scene (no planes over the castle)
+        this.env.era = this.motif.era || 'modern';
         this.env.horizon = this.motif.horizon;
         this._updateEnv();
         this.worldKey = '';

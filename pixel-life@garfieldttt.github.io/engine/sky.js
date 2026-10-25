@@ -177,7 +177,7 @@ export class Sky {
         const dir = chance(0.5) ? 1 : -1;
         const x = dir > 0 ? -30 : this.w + 30;
         const night = env.dark > 0.6;
-        const kind = night
+        const kind = env.era === 'medieval' ? (night ? 'bats' : 'birds') : night
             ? pick(['plane', 'plane', 'bats', 'heli', ...(chance(0.08) ? ['ufo'] : []), ...(env.holidays.christmasEve ? ['sleigh', 'sleigh'] : [])])
             : pick(['plane', 'birds', 'birds', 'birds', ...(env.weather.v.rain < 0.2 ? ['balloon'] : []), 'plane']);
         const y = rand(8, env.horizon * 0.55);

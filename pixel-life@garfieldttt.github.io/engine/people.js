@@ -1,7 +1,7 @@
 // Pixel people (about 14x30), pets and their props. Every person is
 // a random mix of body, clothes, hair and accessories; walk frames are
 // built once per person and cached.
-import {rand, chance, pick} from './util.js';
+import {rand, chance, pick, weighted} from './util.js';
 import {mix} from './gfx.js';
 import {Cells, drawFigure} from './figure.js';
 import {INK} from './art.js';
@@ -66,6 +66,180 @@ export function makePerson(env, opts = {}) {
     p.phone = !kid && chance(0.25);
     if (env.holidays.halloween && kid && chance(0.5))
         p.costume = pick(['ghost', 'pumpkin', 'witch']);
+    return p;
+}
+
+// ---------------- medieval townsfolk ----------------
+
+// undyed wool and plant dyes for common folk, deep colors for the rich
+const WOOL = [0x8a6a4a, 0x7a5a3a, 0xa08a6a, 0x6a6a5a, 0x9a7a5a, 0x5a6a4a, 0xb8a888, 0x8a7a68];
+const DYED = [0x9a3a2a, 0x3a5a8a, 0x5a7a3a, 0xb88a3a, 0x7a4a6a, 0x8a2a2a, 0x4a6a6a];
+const RICH = [0x8a1a2a, 0x1a3a7a, 0x2a5a3a, 0x5a2a6a, 0x9a6a1a, 0x1a1a3a];
+const HOSE = [0x5a4a3a, 0x3a3a4a, 0x6a5a40, 0x7a2a2a, 0x3a4a6a, 0x4a5a3a];
+const BOOTS = [0x4a2a1a, 0x3a2a20, 0x5a3a24];
+
+// role: peasant, townsman, townswoman, merchant, monk, nun, guard, elder,
+// kid, pilgrim, noble, watchman, crier, minstrel, juggler, knight, baker,
+// water (carrier); without one a common townsperson is picked
+export function makeMedieval(env, opts = {}) {
+    const role = opts.role ?? weighted([['peasant', 5], ['townsman', 4], ['townswoman', 5], ['merchant', 1.2], ['monk', 0.7],
+        ['nun', 0.3], ['guard', 0.6], ['elder', 1.2], ['kid', 2.4], ['pilgrim', 0.3], ['noble', 0.25]]);
+    const kid = role === 'kid', elder = role === 'elder';
+    const woman = role === 'townswoman' || role === 'nun' || ((kid || elder || role === 'peasant' || role === 'noble') && chance(0.5));
+    const p = {
+        role, kid, elder, woman,
+        skin: pick(SKINS),
+        hair: elder ? pick([0xe8e4dc, 0xc0bcb8, 0x9a9a9a]) : pick([0x3a2418, 0x6a3c20, 0xa85c2c, 0xe8c060, 0x2a2430, 0xc8442c, 0x7a5a3a]),
+        style: woman ? pick(['long', 'bun', 'pony']) : pick(['short', 'short', 'curly', 'bald']),
+        shirt: pick(WOOL),
+        pants: pick(HOSE),
+        shoes: pick(BOOTS),
+        speed: kid ? rand(16, 22) : elder ? rand(7, 10) : rand(11, 16),
+        frames: [],
+        t: rand(10),
+        blush: chance(0.5),
+    };
+    if (woman) {
+        p.robe = !kid;
+        p.tunic = kid;
+        p.shirt = pick(chance(0.5) ? DYED : WOOL);
+        p.style = kid ? pick(['long', 'pony']) : pick(['veil', 'coif', 'veil', 'long']);
+        p.veil = pick([0xf2eee4, 0xe8e0c8, 0xd8e0e8]);
+        if (!kid && chance(0.45))
+            p.apron = pick([0xf0ece0, 0xe0d8c0]);
+    } else {
+        p.tunic = true;
+        p.shirt = pick(chance(0.35) ? DYED : WOOL);
+        if (chance(0.45)) {
+            p.style = 'hood';
+            p.hood = pick([...WOOL, ...DYED]);
+        } else if (chance(0.3)) {
+            p.style = pick(['straw', 'coif']);
+        }
+        p.belt = chance(0.7) ? pick([0x4a2a1a, 0x3a2418]) : 0;
+    }
+    switch (role) {
+    case 'peasant':
+        if (!woman && env.season === 'summer' && chance(0.4))
+            p.style = 'straw';
+        p.carry = weighted([['basket', 3], ['sack', 2], ['none', 4], ['staff', 0.5]]);
+        break;
+    case 'merchant':
+        p.shirt = pick(RICH);
+        p.robe = true;
+        p.style = 'feather';
+        p.cap = pick(RICH);
+        p.feather = pick([0xf0ece0, 0x3a6aa8, 0xd84848]);
+        p.belt = 0xd8b040;
+        p.carry = chance(0.3) ? 'sack' : 'none';
+        break;
+    case 'monk':
+        p.shirt = pick([0x5a3a24, 0x6a4a2a, 0x2a2420, 0xe8e0d0]);
+        p.robe = true;
+        p.tunic = false;
+        p.style = chance(0.5) ? 'tonsure' : 'hood';
+        p.hood = p.shirt;
+        p.belt = 0xe8dcb8;
+        p.carry = chance(0.3) ? 'staff' : 'none';
+        p.speed = rand(8, 11);
+        break;
+    case 'nun':
+        p.shirt = 0x2a2430;
+        p.veil = 0x2a2430;
+        p.style = 'veil';
+        p.apron = 0;
+        p.speed = rand(8, 11);
+        break;
+    case 'guard':
+    case 'watchman':
+        p.armor = true;
+        p.shirt = 0x8a8e98;
+        p.tabard = opts.tabard ?? 0x9a2a2a;
+        p.charge = 0xf0c030;
+        p.style = 'helm';
+        p.pants = 0x5a5e68;
+        p.carry = role === 'watchman' ? 'halberd' : chance(0.5) ? 'spear' : 'halberd';
+        p.speed = rand(9, 12);
+        if (role === 'watchman') {
+            p.lantern = true;
+            p.armor = false;
+            p.shirt = pick([0x5a4a3a, 0x4a4a5a]);
+            p.coat = 0x3a3a48;
+            p.style = 'hood';
+            p.hood = 0x3a3a48;
+        }
+        break;
+    case 'elder':
+        p.carry = chance(0.6) ? 'staff' : 'none';
+        break;
+    case 'kid':
+        p.carry = chance(0.15) ? 'hoop' : 'none';
+        break;
+    case 'pilgrim':
+        p.robe = true;
+        p.shirt = 0x6a5a48;
+        p.style = 'straw';
+        p.carry = 'staff';
+        p.shell = true;
+        break;
+    case 'noble':
+        p.shirt = pick(RICH);
+        p.robe = woman || chance(0.5);
+        p.style = woman ? 'veil' : 'feather';
+        p.veil = 0xf8f4ec;
+        p.cap = pick(RICH);
+        p.feather = 0xf0ece0;
+        p.belt = 0xd8b040;
+        break;
+    case 'crier':
+        p.shirt = 0x2a5a9a;
+        p.style = 'feather';
+        p.cap = 0x9a2a2a;
+        p.feather = 0xf0d040;
+        p.carry = 'bell';
+        break;
+    case 'minstrel':
+        p.shirt = pick([0xd84848, 0x3a8a4a, 0xe8a640]);
+        p.pants = pick([0xf0d040, 0x3a5a9a]);
+        p.style = 'feather';
+        p.cap = pick([0x3a8a4a, 0x9a2a2a]);
+        p.carry = 'lute';
+        break;
+    case 'juggler':
+        p.shirt = pick([0xd84848, 0x3a6ac8]);
+        p.pants = pick([0xf0d040, 0x5aae58]);
+        p.style = 'feather';
+        p.cap = 0xf0d040;
+        break;
+    case 'knight':
+        p.armor = true;
+        p.shirt = 0x8a8e98;
+        p.tabard = opts.tabard ?? pick([0x1a3a7a, 0x8a1a2a, 0x2a5a3a, 0xf0ece0]);
+        p.charge = pick([0xf0c030, 0xf0ece0, 0xd83030]);
+        p.style = 'helm';
+        p.pants = 0x6a6e78;
+        break;
+    case 'baker':
+        p.shirt = 0xf0ece0;
+        p.apron = 0xffffff;
+        p.style = 'coif';
+        p.carry = 'bread';
+        break;
+    case 'water':
+        p.carry = 'yoke';
+        p.speed = rand(8, 11);
+        break;
+    }
+    if (env.season === 'winter' && !p.armor && chance(0.6))
+        p.coat = pick([0x5a3a2a, 0x3a4a3a, 0x4a3a4a, 0x6a5a48]);
+    // no umbrellas: hoods go up in the rain
+    if (env.weather.v.rain > 0.3 && !woman && !p.armor && p.style !== 'tonsure' && chance(0.7)) {
+        p.style = 'hood';
+        p.hood = p.hood || pick(WOOL);
+    }
+    // after dark the town law wants a light in the hand
+    if (env.dark > 0.55 && !kid && chance(0.6))
+        p.lantern = true;
     return p;
 }
 
@@ -159,6 +333,70 @@ function buildPerson(p, frame) {
         c.rect(hx + 3, hy - 1, 6, 2, 0x2a1a3a);
         c.rect(hx, hy + 1, 13, 1, 0x3a2a4a);
         break;
+    // medieval headwear
+    case 'hood': {
+        // hood with a shoulder cape and a short tail (liripipe)
+        const hd = p.hood, hdS = sh(hd, 0.3), hdH = hi(hd, 0.25);
+        c.rect(hx + 2, hy - 1, 8, 1, hd);
+        c.rect(hx + 1, hy, 10, 3, hd);
+        c.rect(hx, hy + 2, 5, 9, hd);
+        c.rect(hx + 9, hy + 2, 2, 2, hd);
+        c.rect(hx + 3, hy, 5, 1, hdH);
+        c.rect(hx, hy + 8, 3, 3, hdS);
+        c.rect(hx - 2, hy + 3, 3, 2, hd);
+        c.set(hx - 3, hy + 4, hdS);
+        break;
+    }
+    case 'coif':
+        c.rect(hx + 1, hy - 1, 9, 4, 0xf0ece0);
+        c.rect(hx + 1, hy + 3, 3, 4, 0xf0ece0);
+        c.rect(hx + 2, hy - 1, 6, 1, 0xffffff);
+        c.rect(hx + 1, hy + 6, 3, 1, 0xd8d0c0);
+        break;
+    case 'veil': {
+        // veil over the hair and a wimple around the chin
+        const v = p.veil || 0xf2eee4, vS = sh(v, 0.2);
+        c.rect(hx + 1, hy - 1, 10, 3, v);
+        c.rect(hx, hy + 2, 5, 11, v);
+        c.rect(hx + 5, hy + 9, 5, 2, v);
+        c.rect(hx + 9, hy + 2, 2, 2, v);
+        c.rect(hx, hy + 10, 3, 3, vS);
+        c.rect(hx + 3, hy - 1, 5, 1, hi(v, 0.4));
+        break;
+    }
+    case 'tonsure':
+        c.rect(hx + 3, hy, 6, 2, skin);
+        c.rect(hx + 4, hy, 3, 1, hi(skin, 0.25));
+        break;
+    case 'helm':
+        // iron kettle hat with a wide brim
+        c.rect(hx + 2, hy - 2, 8, 4, 0x8a8e98);
+        c.rect(hx + 3, hy - 2, 4, 1, 0xc8ccd4);
+        c.rect(hx - 1, hy + 2, 14, 1, 0x6a6e78);
+        c.rect(hx, hy + 2, 6, 1, 0xa8acb4);
+        break;
+    case 'feather': {
+        const cap = p.cap || 0x8a1a2a;
+        c.rect(hx + 1, hy - 1, 11, 3, cap);
+        c.rect(hx + 2, hy - 1, 5, 1, hi(cap, 0.3));
+        c.rect(hx, hy + 1, 3, 1, sh(cap, 0.3));
+        c.rect(hx + 1, hy - 5, 2, 4, p.feather || 0xf0ece0);
+        c.set(hx, hy - 6, p.feather || 0xf0ece0);
+        break;
+    }
+    case 'straw':
+        c.rect(hx + 2, hy - 2, 8, 3, 0xe0c068);
+        c.rect(hx + 3, hy - 2, 4, 1, 0xf4dc90);
+        c.rect(hx - 2, hy + 1, 16, 1, 0xd0aa50);
+        c.rect(hx + 2, hy, 8, 1, 0x9a5a3a);
+        break;
+    case 'crown':
+        c.rect(hx + 2, hy - 2, 8, 2, 0xf0c030);
+        c.set(hx + 2, hy - 3, 0xf0c030);
+        c.set(hx + 5, hy - 3, 0xf0c030);
+        c.set(hx + 9, hy - 3, 0xf0c030);
+        c.set(hx + 5, hy - 2, 0xd83030);
+        break;
     }
     // ---- body
     const by = hy + headH + 1;
@@ -173,6 +411,22 @@ function buildPerson(p, frame) {
     }
     if (p.jogger)
         c.rect(hx + 4, by + 2, 4, 3, 0xf4f4f4);
+    if (p.armor) {
+        // mail shirt under a tabard in the wearer's colors
+        for (let yy = by; yy < by + bodyH; yy++)
+            for (let xx = hx + 2; xx < hx + 11; xx++)
+                if ((xx + yy) % 2)
+                    c.set(xx, yy, 0x6a6e78);
+        c.rect(hx + 4, by, 6, bodyH, p.tabard);
+        c.rect(hx + 4, by, 1, bodyH, hi(p.tabard, 0.25));
+        c.rect(hx + 6, by + 2, 2, 3, p.charge || 0xf0c030);
+    }
+    if (p.style === 'hood' && !p.armor)
+        c.rect(hx + 1, by, 11, 3, p.hood), c.rect(hx + 1, by + 2, 11, 1, sh(p.hood, 0.3));
+    if (p.apron)
+        c.rect(hx + 8, by + 3, 3, bodyH - 3, p.apron);
+    if (p.belt)
+        c.rect(hx + 2, by + bodyH - 2, 9, 1, p.belt);
     if (p.backpack) {
         c.rect(hx, by + 1, 3, bodyH - 2, p.backpack);
         c.set(hx, by + 1, hi(p.backpack, 0.3));
@@ -217,15 +471,36 @@ function buildPerson(p, frame) {
         c.rect(hx + 9, ly + 6, 4, 2, p.shoes);
         return c.finish(INK);
     }
-    if (p.dress) {
+    if (p.robe) {
+        // long robe down to the shoes; the hem sways with the step
+        const sway = frame === 1 ? 1 : frame === 3 ? -1 : 0;
+        for (let i = 0; i < legH; i++) {
+            const k = i / legH, wid = 10 + Math.round(k * 2), o = Math.round(sway * k);
+            c.rect(hx + 1 + o - Math.round(k), ly + i, wid, 1, shirt);
+            c.set(hx + 10 + o + Math.round(k), ly + i, shirtS);
+        }
+        c.rect(hx + Math.round(sway), ly + legH - 1, 13, 1, shirtS);
+        if (p.apron)
+            c.rect(hx + 8, ly, 3, legH - 1, p.apron);
+        const off = frame === 1 ? 2 : frame === 3 ? -2 : 0;
+        c.rect(hx + 6 + off, ly + legH, 4, 2, p.shoes);
+        if (frame === 1 || frame === 3)
+            c.rect(hx + 3 - off, ly + legH, 4, 2, sh(p.shoes, 0.2));
+        return c.finish(INK);
+    }
+    if (p.dress || p.tunic) {
         c.rect(hx + 1, ly, 11, 4, shirt);
         c.rect(hx + 1, ly + 3, 11, 1, shirtS);
         c.rect(hx + 10, ly, 2, 4, shirtS);
+        if (p.armor)
+            c.rect(hx + 4, ly, 6, 3, p.tabard);
+        if (p.apron)
+            c.rect(hx + 8, ly, 3, 3, p.apron);
     } else {
         c.rect(hx + 3, ly, 8, 2, pants);
         c.rect(hx + 3, ly, 8, 1, sh(pants, 0.45));
     }
-    const legTop = p.dress ? ly + 4 : ly + 2;
+    const legTop = p.dress || p.tunic ? ly + 4 : ly + 2;
     const lc = p.dress ? skin : pants, lcS = p.dress ? skinS : pantsS;
     const legRows = ly + legH - legTop;
     const shoe = p.shoes, shoeH = hi(shoe, 0.3);
@@ -296,6 +571,19 @@ function buildPersonFB(p, frame, face) {
     }
     if (p.style === 'bun')
         c.rect(hx + 4, hy - 3, 4, 3, hair);
+    const headwear = {hood: p.hood, coif: 0xf0ece0, veil: p.veil || 0xf2eee4, helm: 0x8a8e98, feather: p.cap, straw: 0xe0c068, crown: 0xf0c030}[p.style];
+    if (headwear) {
+        c.rect(hx + 1, hy - 1, 10, 3, headwear);
+        c.rect(hx + 2, hy - 1, 4, 1, hi(headwear, 0.3));
+        if (p.style === 'hood' || p.style === 'veil') {
+            c.rect(hx, hy + 1, 2, 9, headwear);
+            c.rect(hx + 10, hy + 1, 2, 9, headwear);
+            if (back)
+                c.rect(hx + 1, hy + 1, 10, 9, headwear);
+        }
+        if (p.style === 'straw' || p.style === 'helm')
+            c.rect(hx - 2, hy + 2, 16, 1, sh(headwear, 0.2));
+    }
     // body
     const by = hy + headH + 1, bodyH = kid ? 6 : 8;
     c.rect(hx + 1, by, 10, bodyH, shirt);
@@ -319,15 +607,30 @@ function buildPersonFB(p, frame, face) {
         c.rect(hx + 11, by + 1 - sw, 2, bodyH - 3, sh(shirt, 0.15));
         c.rect(hx + 11, by + bodyH - 2 - sw, 2, 2, skin);
     }
+    if (p.armor)
+        c.rect(hx + 3, by, 6, bodyH, p.tabard);
+    if (p.apron && !back)
+        c.rect(hx + 3, by + 3, 6, bodyH - 3, p.apron);
+    if (p.belt)
+        c.rect(hx + 1, by + bodyH - 2, 10, 1, p.belt);
     // legs: one lifted while walking
     const ly = by + bodyH, legH = kid ? 5 : 7;
-    if (p.dress) {
+    if (p.robe) {
+        c.rect(hx, ly, 12, legH, shirt);
+        c.rect(hx, ly + legH - 1, 12, 1, shirtS);
+        if (p.apron && !back)
+            c.rect(hx + 3, ly, 6, legH - 1, p.apron);
+        c.rect(hx + 2, ly + legH, 3, 2, p.shoes);
+        c.rect(hx + 7, ly + legH, 3, 2, p.shoes);
+        return c.finish(INK);
+    }
+    if (p.dress || p.tunic) {
         c.rect(hx, ly, 12, 4, shirt);
         c.rect(hx, ly + 3, 12, 1, shirtS);
     } else {
         c.rect(hx + 2, ly, 8, 2, p.pants);
     }
-    const legTop = p.dress ? ly + 4 : ly + 2;
+    const legTop = p.dress || p.tunic ? ly + 4 : ly + 2;
     const lc = p.dress ? skin : p.pants;
     for (const [lx, lift] of [[hx + 2, frame === 1 ? 2 : 0], [hx + 6, frame === 3 ? 2 : 0]]) {
         c.rect(lx, legTop, 4, ly + legH - legTop - lift, lx === hx + 2 ? lc : sh(lc, 0.12));
@@ -482,11 +785,139 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
         g.rectE(px, top + 17, 2, 2, 0xb0d8ff);
         g.glow(px + 1, top + 16, 4, 0x80b0ff, 0.18);
     }
+    if (p.carry && p.carry !== 'none')
+        drawCarry(g, p, f, x, top, flip, env);
+    if (p.lantern) {
+        // lantern hanging from the hand: a candle behind horn panes
+        const lx = Math.floor(flip ? x + 1 : x + f.w - 4), ly = top + 20 + (moving && Math.floor(p.t * 4) % 2 ? 1 : 0);
+        g.rect(lx, ly - 3, 1, 3, INK);
+        g.rect(lx - 2, ly, 5, 6, INK);
+        if (env.dark > 0.4) {
+            g.rectE(lx - 1, ly + 1, 3, 4, 0xffc860);
+            g.glow(lx, ly + 3, 14, 0xffb850, 0.3);
+        } else {
+            g.rect(lx - 1, ly + 1, 3, 4, 0xd8c8a0);
+        }
+    }
     if (p.dog) {
         const d = p.dog;
         const df = dogFigure(d, d.sniff > 0 ? 0 : Math.floor(p.t * 6));
         const dx = flip ? x + f.w + 6 : x - df.w - 6;
         drawFigure(g, df, dx, y, flip);
         g.line(flip ? x + 3 : x + f.w - 4, top + 19, flip ? dx + 3 : dx + df.w - 4, y - df.h + 5, 0xb83a3a);
+    }
+}
+
+// things medieval folk carry, drawn over the figure; the hand is at about
+// top + 19 on the side the figure faces
+function drawCarry(g, p, f, x, top, flip, env) {
+    const front = flip ? x + 2 : x + f.w - 4, back = flip ? x + f.w - 4 : x + 2;
+    const hy = top + 19, t = p.t;
+    switch (p.carry) {
+    case 'basket':
+        g.rect(front - 3, hy - 1, 8, 6, INK);
+        g.rect(front - 2, hy, 6, 4, 0xb8884a);
+        g.rect(front - 2, hy + 2, 6, 1, 0x8a5a2a);
+        g.rect(front - 1, hy - 1, 2, 1, 0xd84848);
+        g.rect(front + 2, hy - 1, 2, 1, 0x6ab84a);
+        g.rect(front - 1, hy - 4, 4, 1, INK);
+        g.rect(front - 2, hy - 3, 1, 2, INK);
+        g.rect(front + 3, hy - 3, 1, 2, INK);
+        break;
+    case 'sack': {
+        // bulging sack over the shoulder, tied at the neck
+        const sx = back - 3;
+        g.rect(sx + 1, top + 9, 7, 11, INK);
+        g.rect(sx, top + 11, 9, 7, INK);
+        g.rect(sx + 2, top + 10, 5, 9, 0xc8b088);
+        g.rect(sx + 1, top + 12, 7, 5, 0xc8b088);
+        g.rect(sx + 2, top + 10, 2, 6, 0xe0cca8);
+        g.rect(sx + 6, top + 13, 2, 5, 0xa08a68);
+        g.rect(sx + 3, top + 8, 3, 2, INK);
+        g.rect(sx + 4, top + 7, 1, 1, 0x8a6a40);
+        break;
+    }
+    case 'staff':
+        g.rect(front + 1, top - 2, 1, f.h + 2, 0x6a4a2a);
+        g.rect(front, top - 3, 3, 2, 0x8a6a3a);
+        if (p.shell)
+            g.rect(front - 1, top + 1, 3, 2, 0xf0e8d8);
+        break;
+    case 'spear':
+        g.rect(front + 1, top - 12, 1, f.h + 12, 0x6a4a2a);
+        g.rect(front, top - 17, 3, 5, 0xc8ccd4);
+        g.px(front + 1, top - 18, 0xc8ccd4);
+        break;
+    case 'halberd':
+        g.rect(front + 1, top - 12, 1, f.h + 12, 0x6a4a2a);
+        g.rect(front + 1, top - 18, 1, 6, 0xc8ccd4);
+        g.rect(front - 3, top - 15, 4, 5, 0xa8acb4);
+        g.rect(front - 3, top - 15, 4, 1, 0xd8dce4);
+        g.rect(front + 2, top - 13, 2, 2, 0xa8acb4);
+        break;
+    case 'lute':
+        g.rect(front - 6, top + 14, 8, 7, INK);
+        g.rect(front - 5, top + 15, 6, 5, 0xc8883a);
+        g.px(front - 3, top + 17, INK);
+        g.rect(front + 1, top + 12, 6, 2, 0x8a5a2a);
+        break;
+    case 'bell': {
+        // the crier rings a hand bell above his head
+        const up = Math.floor(t * 6) % 2;
+        g.rect(front, top - 2 + up, 1, 8, 0x6a4a2a);
+        g.rect(front - 2, top - 7 + up, 5, 5, INK);
+        g.rect(front - 1, top - 6 + up, 3, 4, 0xe0b040);
+        break;
+    }
+    case 'bread':
+        // board of loaves on the head
+        g.rect(x, top + 2, f.w, 2, INK);
+        g.rect(x + 1, top + 2, f.w - 2, 1, 0x8a6a40);
+        for (let i = 0; i < 3; i++) {
+            g.rect(x + 2 + i * 4, top - 1, 5, 3, INK);
+            g.rect(x + 3 + i * 4, top, 3, 2, 0xd8983a);
+            g.px(x + 3 + i * 4, top, 0xf0c060);
+        }
+        break;
+    case 'yoke': {
+        // water carrier: a pole over the shoulders, a bucket at each end
+        const sx = x + f.w / 2;
+        g.rect(sx - 13, top + 13, 27, 1, 0x6a4a2a);
+        for (const bx of [sx - 13, sx + 11]) {
+            g.rect(bx + 1, top + 14, 1, 6, 0x5a4a3a);
+            g.rect(bx - 1, top + 20, 5, 6, INK);
+            g.rect(bx, top + 21, 3, 4, 0x8a6a40);
+            g.rect(bx, top + 21, 3, 1, 0x8ac0e8);
+        }
+        break;
+    }
+    case 'torch': {
+        g.rect(front + 1, top + 4, 1, 16, 0x6a4a2a);
+        const fl = Math.floor(t * 9) % 3;
+        g.rectE(front, top + 1 - fl % 2, 3, 3, 0xffa030);
+        g.pxE(front + 1, top - 1 - fl, 0xffe080);
+        g.glow(front + 1, top + 2, 18, 0xff9a40, 0.35);
+        break;
+    }
+    case 'banner': {
+        // a banner on a pole, flying with the wind
+        const lean = env.weather.lean(x), dir = lean < 0 ? -1 : 1, fx = front + 1;
+        g.rect(fx, top - 22, 1, f.h + 22, 0x6a4a2a);
+        for (let i = 0; i < 12; i++) {
+            const wave = Math.round(Math.sin(t * 5 + i * 0.6) * Math.min(2, Math.abs(lean) + 0.5));
+            g.rect(fx + dir * (i + 1), top - 21 + wave, 1, 8, i % 4 === 3 ? INK : p.flag || 0xd83030);
+        }
+        g.rect(fx, top - 23, 1, 1, 0xf0c030);
+        break;
+    }
+    case 'hoop': {
+        const hx = front + 6;
+        g.rect(hx - 3, top + 22, 7, 1, 0x8a6a40);
+        g.rect(hx - 3, top + 28, 7, 1, 0x8a6a40);
+        g.rect(hx - 4, top + 23, 1, 5, 0x8a6a40);
+        g.rect(hx + 4, top + 23, 1, 5, 0x8a6a40);
+        g.line(front, top + 19, hx, top + 25, 0x6a4a2a);
+        break;
+    }
     }
 }

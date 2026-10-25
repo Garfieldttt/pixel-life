@@ -55,7 +55,7 @@ export default class PixelLifePreferences extends ExtensionPreferences {
         const page = new Adw.PreferencesPage({title: 'Pixel Life', icon_name: 'preferences-desktop-wallpaper-symbolic'});
 
         const scene = new Adw.PreferencesGroup({title: 'Scene'});
-        scene.add(comboRow(settings, 'motif', 'Motif', [['village', 'Village by the lake'], ['city', 'Big city (side view)'], ['country', 'Countryside (side view)'], ['space', 'Space'], ['underwater', 'Under the sea'], ['auto', 'Alternate']]));
+        scene.add(comboRow(settings, 'motif', 'Motif', [['village', 'Village by the lake'], ['city', 'Big city (side view)'], ['country', 'Countryside (side view)'], ['medieval', 'Medieval town (side view)'], ['space', 'Space'], ['underwater', 'Under the sea'], ['auto', 'Alternate']]));
         scene.add(spinRow(settings, 'rotate-minutes', 'Change scene every', 'Minutes, when alternating', 5, 1440, 5));
         page.add(scene);
 
