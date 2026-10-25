@@ -429,11 +429,13 @@ export class Farm {
         g.rect(m.x - S(2) + 1, m.y - S(32) + 1, S(2) * 2 - 1, S(6) - 2, A.GLASS[2]);
         g.rect(m.x - hw - 2, m.y - H + S(4), hw * 2 + 5, 2, INK);
         g.rect(m.x - hw - 1, m.y - H + S(4), hw * 2 + 3, 1, 0x8a5a38);
+        // pointed cap: narrow at the top, as wide as the tower at the eaves
         const roof = snow ? A.ramp(0xe8eef8) : A.ramp(0xa84838), rh = S(9);
         for (let i = 0; i < rh; i++) {
-            g.rect(m.x - hw - 1 + i, m.y - H - rh + 1 + i, (hw + 1 - i) * 2 + 1, 1, INK);
-            if (i > 0)
-                g.rect(m.x - hw + i, m.y - H - rh + 1 + i, (hw - i) * 2 + 1, 1, i < S(3) ? roof[3] : roof[2]);
+            const half = Math.round((i + 1) / rh * (hw + 1)), y = m.y - H - rh + i;
+            g.rect(m.x - half, y, half * 2 + 1, 1, INK);
+            if (half > 1 && i < rh - 1)
+                g.rect(m.x - half + 1, y, half * 2 - 1, 1, i < rh / 3 ? roof[3] : roof[2]);
         }
         m.hub = [m.x, m.y - H + S(2)];
     }
