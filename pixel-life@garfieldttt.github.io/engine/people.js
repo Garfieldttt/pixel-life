@@ -770,6 +770,21 @@ export function catFigure(cat, pose) {
 
 // Person plus props, feet at (x, y).
 export function drawPerson(g, p, x, y, dir, env, face = 'side') {
+    // the umbrella is shut when the rain stops and opened again when it
+    // comes back (the arm pose is part of the cached frames)
+    const rain = env.weather.v.rain;
+    if (p.indoor) {
+        // indoors it stays shut (and is left at the door)
+        p.umbrella = p.furled = null;
+    } else if (p.umbrella && rain < 0.15) {
+        p.furled = p.umbrella;
+        p.umbrella = null;
+        p.frames = [];
+    } else if (p.furled && rain > 0.3) {
+        p.umbrella = p.furled;
+        p.furled = null;
+        p.frames = [];
+    }
     const moving = p.state !== 'wait' && p.state !== 'sit' && p.state !== 'chat' && p.state !== 'crosswait' && p.state !== 'fish' && p.state !== 'idle';
     const frame = p.state === 'sit' ? 'sit' : moving ? Math.floor(p.t * p.speed / 6) % 4 : 0;
     // everybody blinks now and then
@@ -807,6 +822,14 @@ export function drawPerson(g, p, x, y, dir, env, face = 'side') {
         g.disc(bx, by, 3, p.balloon);
         g.rect(bx - 2, by - 2, 2, 1, hi(p.balloon, 0.6));
         g.px(bx, by + 4, p.balloon);
+    }
+    if (p.furled && !p.cane) {
+        // carried shut, hanging from the hand by its crook
+        const ux = flip ? x + 2 : x + f.w - 3, uy = top + 20;
+        g.rect(ux, uy, 1, 2, INK);
+        g.rect(ux - 1, uy + 2, 3, 7, INK);
+        g.rect(ux, uy + 2, 1, 6, p.furled);
+        g.px(ux, uy + 9, INK);
     }
     if (p.cane) {
         const cx = flip ? x + 1 : x + f.w - 2;

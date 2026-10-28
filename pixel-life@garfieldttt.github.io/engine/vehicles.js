@@ -296,22 +296,43 @@ function buildVehicle(v, frame) {
         break;
     }
     case 'tractor': {
-        const L = 42;
-        c = new Cells(L, 30);
-        c.rect(0, 12, 30, 9, col);
-        c.rect(0, 12, 30, 1, lt);
-        c.rect(14, 0, 14, 13, col);
-        glass(c, 16, 2, 10, 8);
-        driver(c, v, 19, 4);
-        c.rect(30, 14, 12, 7, col);
-        c.rect(34, 6, 2, 8, 0x3a3a3a);
-        c.rect(2, 13, 10, 2, 0xe8c040);
-        wheel(c, 1, 15, frame, 7);
-        c.rect(6, 20, 4, 4, frame % 2 ? 0xe8c040 : 0xc8a030);
-        wheel(c, 30, 21, frame, 4);
-        c.light(L - 2, 16, 0xfff4c0, 'head');
-        c.light(0, 14, 0xff3030, 'tail');
-        c.light(26, -1, 0xffa020, 'beacon');
+        // farm tractor: big rear wheel under the cab, long hood, small
+        // front wheel; about 1.7 people tall once doubled
+        const L = 40;
+        c = new Cells(L, 28);
+        // cab: roof, posts, glass, driver
+        c.rect(3, 2, 18, 2, col);
+        c.rect(4, 2, 16, 1, lt);
+        c.rect(4, 4, 2, 9, dk);
+        c.rect(18, 4, 2, 9, dk);
+        glass(c, 6, 4, 12, 8);
+        driver(c, v, 12, 6);
+        c.rect(10, 10, 6, 3, 0x3a3a3a); // seat back
+        // body under the cab and the hood
+        c.rect(2, 12, 20, 4, col);
+        c.rect(2, 12, 20, 1, lt);
+        c.rect(20, 13, L - 21, 7, col);
+        c.rect(20, 13, L - 21, 1, lt);
+        c.rect(20, 18, L - 21, 2, dk);
+        for (let i = 23; i < L - 4; i += 3)
+            c.rect(i, 15, 1, 2, dk2); // vents
+        c.rect(L - 2, 14, 2, 5, 0x5a5a64); // grille
+        c.rect(L - 3, 14, 1, 5, dk2);
+        c.rect(L - 4, 13, 3, 1, 0xfff4c0);
+        // exhaust with a cap
+        c.rect(27, 5, 2, 8, 0x3a3a3a);
+        c.rect(26, 4, 4, 1, 0x5a5a5a);
+        // fender over the rear wheel
+        c.rect(0, 10, 22, 2, dk);
+        c.rect(1, 10, 20, 1, col);
+        // hitch at the back
+        c.rect(0, 20, 3, 2, 0x5a5a5a);
+        wheel(c, 1, 11, frame, 8);
+        wheel(c, L - 13, 20, frame, 4);
+        c.light(L - 2, 13, 0xfff4c0, 'head');
+        c.light(0, 13, 0xff3030, 'tail');
+        c.light(12, 0, 0xffa020, 'beacon');
+        c.rect(11, 1, 3, 1, 0xe8a020);
         break;
     }
     default: { // bike, scooter: rider drawn separately
@@ -345,9 +366,9 @@ function buildVehicle(v, frame) {
         }
     }
     }
-    // cars and bigger are drawn at half scale; bikes, scooters and the
-    // tractor already match the people
-    if (!['tractor', 'bike', 'scooter'].includes(v.type)) {
+    // cars and bigger (the tractor too) are drawn at half scale; bikes
+    // and scooters already match the people
+    if (!['bike', 'scooter'].includes(v.type)) {
         const wheels = c.wheels;
         c = c.scaled(2);
         polish(c, col, wheels, frame);
@@ -385,6 +406,13 @@ function polish(c, col, wheels, frame) {
                 else if (d < R * 0.62)
                     p = 0x1a1418;
                 c.set(x, y, p);
+            }
+        // tread lugs on big tractor wheels
+        if (w.r >= 6)
+            for (let k = 0; k < 16; k++) {
+                const a = k * Math.PI / 8 + frame * Math.PI / 16;
+                for (const d of [R - 0.5, R - 1.5])
+                    c.set(Math.round(cx + Math.cos(a) * d), Math.round(cy + Math.sin(a) * d), 0x4a4448);
             }
         // bolts, turned a little each frame
         for (let k = 0; k < 4; k++) {

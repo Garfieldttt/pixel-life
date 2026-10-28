@@ -91,52 +91,67 @@ function buildAnimal(kind, a, b, pose) {
         c.rect(3, 11, 1, 2, 0xf0a020);
         c.rect(6, 11, 1, 2, 0xf0a020);
     } else if (kind === 'rabbit') {
-        c = new Cells(14, 12);
-        const up = pose === 'walk1';
-        const by = up ? 4 : 5;
-        c.rect(1, by, 8, 5, a);
-        c.rect(1, by, 8, 1, aH);
-        c.rect(0, by + 1, 2, 2, 0xf8f8f8);
-        c.rect(7, by - 2, 5, 5, a);
-        c.rect(8, by - 6, 2, 5, a);
-        c.rect(10, by - 6, 2, 5, aS);
-        c.set(8, by - 5, 0xf0b8b8);
-        c.set(10, by - 1, INK);
-        c.rect(2, by + 5, 3, 2, a);
-        c.rect(7, by + 5, 2, 2, a);
+        // wild animals run along the far edge of the meadow, so they are
+        // drawn at the scale of the trees there (a deer about half a tree)
+        c = new Cells(7, 6);
+        const up = pose === 'walk1', by = up ? 1 : 2;
+        c.rect(1, by + 1, 4, 2, a);
+        c.rect(2, by + 1, 2, 1, aH);
+        c.set(0, by + 1, 0xf8f8f8); // scut
+        c.rect(4, by, 2, 2, a);
+        c.set(5, by, INK);
+        c.set(4, by - 1, aS); // ears laid back
+        c.set(3, by - 1, aS);
+        c.set(up ? 1 : 2, by + 3, aS);
+        c.set(up ? 5 : 4, by + 3, aS);
     } else if (kind === 'deer') {
-        c = new Cells(30, 30);
-        c.rect(3, 10, 18, 8, a);
-        c.rect(3, 10, 18, 1, aH);
-        for (let i = 4; i < 18; i += 4)
-            c.set(i, 12, 0xf0e0c8);
-        c.rect(2, 9, 3, 3, 0xf8f4ec);
-        c.rect(18, 3, 4, 9, a);
-        c.rect(19, 0, 8, 6, a);
-        c.rect(25, 3, 3, 2, sh(a, 0.3));
-        c.set(23, 2, INK);
-        c.rect(17, 0, 2, 3, aS);
-        c.set(20, -1, 0x6a4a30);
+        // b: 1 stag with antlers, 2 dappled fawn
+        const fawn = b === 2, oy = 3;
+        c = new Cells(14, fawn ? 12 : 13);
+        const L = fawn ? 3 : 4, bx = fawn ? 3 : 2, bw = fawn ? 6 : 8;
+        c.rect(bx, oy + 3, bw, 3, a);
+        c.rect(bx, oy + 3, bw, 1, aH);
+        c.rect(bx + 2, oy + 5, bw - 3, 1, mix(a, 0xf0e0c8, 0.5)); // pale belly
+        c.rect(bx - 1, oy + 3, 2, 2, 0xf8f4ec); // white rump
+        if (fawn)
+            for (const [dx, dy] of [[1, 4], [3, 4], [5, 3], [2, 3]])
+                c.set(bx + dx, oy + dy, 0xf8ecd8);
+        const nx = bx + bw - 2;
+        c.rect(nx, oy + 1, 2, 3, a); // neck
+        c.rect(nx + 1, oy, 3, 2, a); // head
+        c.set(nx + 4, oy + 1, sh(a, 0.45)); // muzzle
+        c.set(nx + 2, oy, INK);
+        c.set(nx, oy - 1, aS); // ear
+        if (b === 1) {
+            const ant = 0xd8c8a8;
+            c.rect(nx + 1, oy - 3, 1, 3, ant);
+            c.set(nx + 2, oy - 2, ant);
+            c.set(nx, oy - 3, ant);
+        }
         const st = pose === 'walk1';
-        for (const [lx, o] of [[4, st ? -2 : 0], [7, st ? 2 : 0], [16, st ? 2 : 0], [19, st ? -2 : 0]])
-            c.rect(lx + o, 18, 2, 10, lx % 2 ? aS : a);
+        for (const [lx, o, far] of [[bx, st ? -1 : 0, 1], [bx + 1, st ? 1 : 0, 0], [nx - 1, st ? 1 : 0, 1], [nx, st ? -1 : 0, 0]])
+            c.rect(lx + o, oy + 6, 1, L, far ? aS : a);
     } else if (kind === 'fox') {
-        c = new Cells(26, 14);
-        c.rect(6, 4, 13, 6, a);
-        c.rect(6, 4, 13, 1, aH);
-        c.rect(8, 8, 10, 2, 0xf8f0e4);
-        c.rect(18, 1, 7, 6, a);
-        c.rect(22, 4, 3, 2, 0xf8f0e4);
-        c.set(25, 4, INK);
-        c.set(21, 2, INK);
-        c.rect(18, -1, 2, 2, a);
-        c.rect(22, -1, 2, 2, a);
-        c.rect(0, 2, 7, 4, a); // bushy tail
-        c.rect(0, 3, 2, 2, 0xf8f0e4);
+        c = new Cells(12, 6);
+        c.rect(4, 2, 5, 2, a);
+        c.rect(4, 2, 5, 1, aH);
+        c.rect(7, 4, 2, 1, 0xf8f0e4); // chest
+        c.rect(8, 1, 3, 2, a); // head
+        c.set(11, 2, sh(a, 0.3)); // snout
+        c.set(10, 2, 0xf8f0e4);
+        c.set(9, 1, INK);
+        c.set(8, 0, a); // ears
+        c.set(9, 0, sh(a, 0.2));
+        c.rect(1, 2, 3, 2, a); // bushy tail
+        c.set(0, 3, 0xf8f0e4);
         const st = pose === 'walk1';
-        for (const [lx, o] of [[7, st ? -1 : 0], [10, st ? 1 : 0], [15, st ? 1 : 0], [18, st ? -1 : 0]])
-            c.rect(lx + o, 10, 2, 4, 0x3a2a24);
+        for (const [lx, o] of [[4, st ? -1 : 0], [5, st ? 1 : 0], [7, st ? 1 : 0], [8, st ? -1 : 0]])
+            c.set(lx + o, 4 + (lx === 7 ? 1 : 0), 0x3a2a24);
+        c.set(4 + (st ? -1 : 0), 5, 0x3a2a24);
+        c.set(8 + (st ? -1 : 0), 5, 0x3a2a24);
     }
+    if (kind === 'deer' || kind === 'fox' || kind === 'rabbit')
+        return c.finish(); // soft outline, they are far away
     return c.finish(INK);
 }
 
@@ -267,12 +282,13 @@ export class Farm {
         }
         this.bits.sort((a, b) => a.y - b.y);
         // grass tufts that sway in the wind, on the open meadow only
-        const spots = [];
-        for (let i = 0; i < W * (this.roadTop - this.meadowTop) / 200; i++) {
-            const x = randi(4, W - 4), y = randi(this.meadowTop + 10, this.roadTop - 3);
-            if (!blocked(x, 4, y) && !this.trees.some(t => Math.abs(t.x - x) < t.s * 0.3 + 3 && Math.abs(t.y - y) < 4))
-                spots.push([x, y]);
-        }
+        const spots = A.tuftClumps(W * (this.roadTop - this.meadowTop) / 220,
+            () => [randi(4, W - 4), randi(this.meadowTop + 10, this.roadTop - 3)],
+            (x, y) => x > 3 && x < W - 4 && y > this.meadowTop + 8 && y < this.roadTop - 2 && !blocked(x, 4, y) &&
+                !this.trees.some(t => Math.abs(t.x - x) < t.s * 0.3 + 3 && Math.abs(t.y - y) < 4));
+        // and along the far edge, where deer, foxes and rabbits run through
+        spots.unshift(...A.tuftClumps(W / 45, () => [randi(4, W - 4), this.meadowTop + randi(3, 7)],
+            (x, y) => x > 3 && x < W - 4 && y > this.meadowTop + 1 && y < this.meadowTop + 9 && !blocked(x, 4, y)));
         this.tufts = A.makeTufts(spots, randi(0, 1e6));
         // animals
         this.cows = [];
@@ -1188,10 +1204,12 @@ export class Farm {
         case 'fox': {
             const n = name === 'fox' ? 1 : randi(1, 3);
             const dir = chance(0.5) ? 1 : -1;
+            const young = env.season === 'spring' || env.season === 'summer';
             for (let i = 0; i < n; i++)
                 this.wild.push({kind: name, a: name === 'deer' ? 0xa86a3a : name === 'fox' ? 0xe0782a : pick([0xb08a6a, 0x8a7a6a, 0xe8e0d8]),
-                    x: dir > 0 ? -30 - i * 26 : this.w + 30 + i * 26, y: this.meadowTop + rand(2, 6), dir, t: rand(5),
-                    speed: name === 'fox' ? 14 : name === 'deer' ? 10 : 16, stop: 0});
+                    b: name !== 'deer' ? 0 : i === n - 1 && n > 1 && young ? 2 : i === 0 && chance(0.4) ? 1 : 0,
+                    x: dir > 0 ? -20 - i * 14 : this.w + 20 + i * 14, y: this.meadowTop + rand(2, 6), dir, t: rand(5),
+                    speed: name === 'fox' ? 7 : name === 'deer' ? 5 : 8, stop: 0});
             break;
         }
         case 'fireworks':
@@ -1429,11 +1447,14 @@ export class Farm {
             this._renderTrain(g, env);
         for (const w of this.wild) {
             const pose = w.stop > 0 ? 'walk2' : Math.floor(w.t * 5) % 2 ? 'walk1' : 'walk2';
-            const f = animalFigure(w.kind, w.a, 0, pose);
+            const f = animalFigure(w.kind, w.a, w.b, pose);
             g.footShadow(w.x + f.w / 2, w.y, f.w - 4, 0.25);
             drawFigure(g, f, w.x, w.y, w.dir < 0);
-            if (env.dark > 0.6 && w.kind !== 'rabbit')
-                g.pxE(w.dir > 0 ? w.x + f.w - 6 : w.x + 5, w.y - f.h + 4, 0xd0ff90);
+            // eyeshine; the eye is the INK pixel in the head
+            if (env.dark > 0.6 && w.kind !== 'rabbit') {
+                const ex = w.kind === 'fox' ? 10 : w.b === 2 ? 10 : 11, ey = w.kind === 'fox' ? 2 : 4;
+                g.pxE(w.dir > 0 ? w.x + ex : w.x + f.w - 1 - ex, w.y - f.h + ey, 0xd0ff90);
+            }
         }
         g.compose(this.layerM, 0, this.h, true);
         this._drawTrees(g, env, -1e9, this.mill.y);

@@ -37,6 +37,8 @@ export class Weather {
         this.flakes = [];
         this.fixed = null;
         this.t = 0;
+        this.gusts = [];
+        this.gustTimer = rand(2, 8);
     }
 
     // How far grass and trees at x lean right now, signed with the wind
@@ -46,6 +48,31 @@ export class Weather {
         const dir = this.wind < 0 ? -1 : 1, s = this.v.breeze * (0.6 + Math.min(1.5, Math.abs(this.wind)) * 0.4);
         const gust = 0.5 + 0.5 * Math.sin(x * 0.011 - dir * this.t * 1.3) * Math.sin(this.t * 0.37 + x * 0.003);
         return dir * s * (0.3 + 0.9 * gust) + s * 0.2 * Math.sin(this.t * 2.6 + x * 0.23);
+    }
+
+    // Grass moves more than trees: a gentle rocking even on a calm day,
+    // and now and then a gust rolls across the meadow as a visible wave.
+    grassLean(x) {
+        let l = this.lean(x) + 0.3 * (0.6 + this.v.breeze) * Math.sin(this.t * 1.6 + x * 0.045);
+        for (const g of this.gusts) {
+            const d = (x - g.x) / g.wd;
+            if (d > -2.5 && d < 2.5)
+                l += g.dir * g.a * Math.exp(-d * d) * (1 + 0.25 * Math.sin(this.t * 9 + x * 0.3));
+        }
+        return l;
+    }
+
+    // gust fronts: more often and stronger the windier the weather
+    _updateGusts(real, w) {
+        this.gustTimer -= real;
+        if (this.gustTimer <= 0) {
+            const b = this.v.breeze, dir = this.wind < 0 ? -1 : 1;
+            this.gustTimer = rand(5, 16) / (0.4 + b);
+            this.gusts.push({x: dir > 0 ? -150 : w + 150, dir, v: rand(70, 130) * (0.7 + b * 0.5), a: rand(0.7, 1.3) * (0.5 + b * 0.6), wd: rand(50, 110)});
+        }
+        for (const g of this.gusts)
+            g.x += g.dir * g.v * real;
+        this.gusts = this.gusts.filter(g => g.x > -200 && g.x < w + 200);
     }
 
     // a weather type chosen in the settings, or null to follow the season
@@ -107,12 +134,13 @@ export class Weather {
 
     // copy the state of another monitor's weather, keep own particles
     follow(other) {
-        for (const k of ['fixed', 'type', 'timer', 'wind', 'snowCover', 'wet', 'flash', 'bolt', 'rainbow'])
+        for (const k of ['fixed', 'type', 'timer', 'wind', 'snowCover', 'wet', 'flash', 'bolt', 'rainbow', 't'])
             this[k] = other[k];
         Object.assign(this.v, other.v);
     }
 
     updateParticles(real, w, h) {
+        this._updateGusts(real, w);
         const want = Math.floor(this.v.rain * w * 0.35);
         while (this.drops.length < want)
             this.drops.push({x: rand(w), y: rand(-h, h), s: rand(180, 260)});

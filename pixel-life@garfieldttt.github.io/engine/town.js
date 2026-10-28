@@ -302,12 +302,9 @@ export class Town {
                 this.meadowFlowers.push({x, y, seed: randi(0, 1e6)});
         }
         // grass tufts that sway in the wind, off the path, pond and props
-        const spots = [];
-        for (let i = Math.floor(W * (this.h - top) / 110); i > 0; i--) {
-            const x = randi(2, W - 3), y = randi(top, this.h - 14);
-            if (free(x - 3, y - 6, 7, 7) && !this.parkBits.some(b => y > this.h - 34 && x > b.x - 10 && x < b.x + 40))
-                spots.push([x, y]);
-        }
+        const spots = A.tuftClumps(W * (this.h - top) / 170, () => [randi(2, W - 3), randi(top, this.h - 14)],
+            (x, y) => x > 2 && x < W - 3 && y >= top && y < this.h - 13 && free(x - 3, y - 6, 7, 7) &&
+                !this.parkBits.some(b => y > this.h - 34 && x > b.x - 10 && x < b.x + 40));
         this.tufts = A.makeTufts(spots, randi(0, 1e6));
     }
 

@@ -11,9 +11,12 @@ import {Village} from './village.js';
 import {Space} from './space.js';
 import {Deep} from './deep.js';
 import {Medieval} from './medieval.js';
+import {Arcade} from './arcade.js';
+import {Airport} from './airport.js';
+import {Harbor} from './harbor.js';
 import {drawClock} from './clock.js';
 
-export const MOTIFS = {village: Village, city: Town, country: Farm, medieval: Medieval, space: Space, underwater: Deep};
+export const MOTIFS = {village: Village, city: Town, country: Farm, medieval: Medieval, arcade: Arcade, airport: Airport, harbor: Harbor, space: Space, underwater: Deep};
 
 export class Engine {
     constructor(width, height, opts = {}) {
@@ -194,6 +197,8 @@ export class Engine {
 
     render() {
         const g = this.g, env = this.env;
+        g.prevSteps = g.steps;
+        g.steps = [];
         g.setAmbient(...env.amb);
         const top = this.motif.topDown, own = this.motif.ownSky;
         if (!top && !own) {

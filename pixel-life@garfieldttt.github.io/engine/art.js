@@ -511,6 +511,126 @@ export function bigTree(g, x, ground, size, season, seed, snow = 0) {
         }
 }
 
+// Fir in the look of bigTree: short trunk with roots, tiers of drooping
+// branches, each tier outlined, lit from the top left and throwing a
+// dark band on the tier below. About 3.1 * size tall, 1.9 * size wide.
+const FIR = [0x10301e, 0x1c5030, 0x2a6e3a, 0x40904a, 0x66b25a];
+
+export function fir(g, x, ground, size, season, seed, snow = 0) {
+    const tint = [0, 0x3a6a8a, 0x8a9a3a][seed % 3];
+    const R = tint ? FIR.map(c => mix(c, tint, 0.12)) : FIR;
+    const bark = [0x3a2018, 0x5a3424, 0x7a4a30, 0x9a6440];
+    g.footShadow(x, ground, size * 1.6, 0.3);
+    const trunkH = Math.round(size * 0.45), tw = Math.max(4, Math.round(size * 0.2));
+    g.rect(x - tw / 2 - 1, ground - trunkH - 4, tw + 2, trunkH + 4, INK);
+    g.rect(x - tw / 2, ground - trunkH - 4, tw, trunkH + 4, bark[2]);
+    g.rect(x - tw / 2, ground - trunkH - 4, 1, trunkH + 4, bark[3]);
+    g.rect(x + tw / 2 - 1, ground - trunkH - 4, 1, trunkH + 4, bark[1]);
+    g.rect(x - tw / 2 - 3, ground - 3, tw + 6, 3, INK);
+    g.rect(x - tw / 2 - 2, ground - 3, tw + 4, 2, bark[2]);
+    const H = Math.round(size * 2.65), n = size >= 24 ? 4 : 3;
+    const crownTop = ground - trunkH - H;
+    const lobeR = Math.max(3, Math.round(size * 0.11));
+    // one pixel mask per tier (x0..x0+W, y0..), top tier first; each tier
+    // overlaps the next one down
+    const W = Math.ceil(size * 2.2 + lobeR * 2), x0 = Math.round(x - W / 2);
+    const tiers = [];
+    for (let k = 0; k < n; k++) {
+        const top = Math.round(crownTop + (k === 0 ? 0 : H * (k - 0.35) / n));
+        const bot = Math.round(crownTop + H * (k + 1) / n);
+        const hw = size * (0.38 + 0.6 * (k + 1) / n);
+        const Hh = bot - top + lobeR + 2, m = new Uint8Array(W * Hh);
+        const set = (xx, yy) => {
+            const i = xx - x0, j = yy - top;
+            if (i >= 0 && i < W && j >= 0 && j < Hh)
+                m[j * W + i] = 1;
+        };
+        const th = bot - top;
+        for (let i = 0; i <= th; i++) {
+            const half = Math.max(1, Math.round(hw * Math.pow((i + 1) / (th + 1), 0.8)));
+            for (let xx = x - half; xx <= x + half; xx++)
+                set(xx, top + i);
+        }
+        // drooping branch tips along the bottom edge
+        const nl = Math.max(2, Math.round(hw * 2 / (lobeR * 1.8)));
+        const lobes = [];
+        for (let j = 0; j < nl; j++) {
+            const lx = Math.round(x - hw + lobeR + j * (hw * 2 - lobeR * 2) / (nl - 1));
+            const ly = bot - Math.round(lobeR * 0.4) + (hash(j, k, seed) % 2);
+            lobes.push([lx, ly]);
+            for (let dy = -lobeR; dy <= lobeR; dy++) {
+                const w = Math.floor(Math.sqrt(lobeR * lobeR - dy * dy));
+                for (let xx = lx - w; xx <= lx + w; xx++)
+                    set(xx, ly + dy);
+            }
+        }
+        const at = (xx, yy) => {
+            const i = xx - x0, j = yy - top;
+            return i >= 0 && i < W && j >= 0 && j < Hh && m[j * W + i] === 1;
+        };
+        tiers.push({at, top, bot, Hh, hw, lobes});
+    }
+    // bottom tier first, so every tier hangs over the one below it
+    for (let k = n - 1; k >= 0; k--) {
+        const t = tiers[k];
+        const each = fn => {
+            for (let yy = t.top; yy < t.top + t.Hh; yy++)
+                for (let xx = x0; xx < x0 + W; xx++)
+                    if (t.at(xx, yy))
+                        fn(xx, yy);
+        };
+        // shade cast on the tier below, then the outline
+        if (k < n - 1)
+            each((xx, yy) => {
+                if (!t.at(xx, yy + 2))
+                    g.blend(xx, yy + 2, 1, 1, 0x0a1418, 0.35);
+            });
+        each((xx, yy) => {
+            for (const [ax, ay] of [[-1, 0], [1, 0], [0, -1], [0, 1]])
+                if (!t.at(xx + ax, yy + ay))
+                    g.px(xx + ax, yy + ay, INK);
+        });
+        each((xx, yy) => {
+            const left = (() => { let l = xx; while (t.at(l - 1, yy)) l--; return l; })();
+            const dx = (xx - x) / (t.hw + lobeR), dy = (yy - t.top) / Math.max(1, t.bot - t.top);
+            const v = -dx * 0.85 + (0.5 - dy) * 0.45;
+            let c = v > 0.5 ? 4 : v > 0.08 ? 3 : v > -0.4 ? 2 : 1;
+            const hv = hash(xx, yy, seed);
+            if (hv < 110 && c > 1)
+                c--;
+            else if (hv > 940 && c < 4)
+                c++;
+            // underside of the branch tips in shade, lit edge on top
+            if (!t.at(xx, yy + 1) || !t.at(xx, yy + 2))
+                c = Math.min(c, 1);
+            else if (!t.at(xx, yy - 1) && xx - left < (t.hw + lobeR) && xx < x)
+                c = Math.max(c, 3);
+            let col = R[c];
+            // snow lies on the upper side of each tier, deepest on the top
+            const depth = (k === 0 ? 5 : 3) + hash(xx, 3, seed) % 2;
+            let free = 0;
+            while (free <= depth && t.at(xx, yy - free - 1))
+                free++;
+            if (snow > 0.2 && free < depth && yy - t.top < (t.bot - t.top) * 0.85)
+                col = free === 0 ? 0xffffff : free < depth - 1 ? 0xf0f4fc : 0xc8d4e8;
+            g.px(xx, yy, col);
+        });
+        // needle strokes: short down-slanted branches
+        for (let j = 0; j < t.hw * 1.4; j++) {
+            const xx = x0 + hash(j, 37 + k, seed) % W, yy = t.top + 2 + hash(j, 31 + k, seed) % Math.max(1, t.bot - t.top - 2);
+            if (!t.at(xx, yy) || !t.at(xx, yy + 3) || !t.at(xx - 1, yy) || !t.at(xx + 1, yy))
+                continue;
+            const lit = xx < x;
+            g.px(xx, yy, R[lit ? 4 : 3]);
+            g.px(xx + (lit ? -1 : 1), yy + 1, R[lit ? 3 : 2]);
+        }
+    }
+    // tip
+    g.rect(x - 1, crownTop - 3, 3, 4, INK);
+    g.px(x, crownTop - 2, snow > 0.2 ? 0xf4f8ff : R[3]);
+    g.px(x, crownTop - 1, R[2]);
+}
+
 // ---------------- ground ----------------
 
 export const GRASS = {
@@ -523,7 +643,59 @@ export const GRASS = {
 // Loose grass tufts drawn every frame over the static meadow so they can
 // sway in the wind; spots = [[x, y], ...] of their roots.
 export function makeTufts(spots, seed = 0, small = false) {
-    return spots.map(([x, y], i) => ({x: Math.round(x), y: Math.round(y), h: (small ? 4 : 6) + hash(i, 3, seed) % (small ? 2 : 4), k: 0.7 + hash(i, 5, seed) / 1600}));
+    return spots.map(([x, y], i) => ({x: Math.round(x), y: Math.round(y), h: (small ? 4 : 6) + hash(i, 3, seed) % (small ? 2 : 5),
+        n: !small && hash(i, 7, seed) % 3 === 0 ? 3 : 2, k: 0.7 + hash(i, 5, seed) / 1600, rs: 0, rd: 1}));
+}
+
+// Spots for tufts in clumps, the way grass grows: n clump centers from
+// center(), each with 3 to 8 tufts around it that ok(x, y) accepts.
+export function tuftClumps(n, center, ok) {
+    const spots = [];
+    for (let i = 0; i < n; i++) {
+        const [cx, cy] = center();
+        const k = 3 + (Math.random() * 6 | 0);
+        for (let j = 0; j < k; j++) {
+            const x = Math.round(cx + (Math.random() - 0.5) * 16), y = Math.round(cy + (Math.random() - 0.5) * 5);
+            if (ok(x, y))
+                spots.push([x, y]);
+        }
+    }
+    return spots.sort((a, b) => a[1] - b[1]);
+}
+
+// Somebody walking through a tuft sets it rustling: it is pushed aside
+// and springs back and forth for a moment. Feet are the foot shadows of
+// the frame before; one that stands still (same x as at its last touch)
+// leaves the grass alone. The tufts are bucketed by 8 px columns once.
+function rustle(g, tufts, dt) {
+    let grid = tufts.grid;
+    if (!grid) {
+        grid = tufts.grid = new Map();
+        for (const tf of tufts) {
+            const k = tf.x >> 3;
+            if (!grid.has(k))
+                grid.set(k, []);
+            grid.get(k).push(tf);
+        }
+        tufts.live = new Set();
+    }
+    const st = g.prevSteps;
+    for (let i = 0; i < st.length; i += 3) {
+        const fx = st[i], fy = st[i + 1], r = Math.min(12, st[i + 2]) + 2;
+        for (let k = (fx - r) >> 3; k <= (fx + r) >> 3; k++)
+            for (const tf of grid.get(k) || [])
+                if (Math.abs(tf.x - fx) < r && tf.y - fy > -4 && tf.y - fy < 3 && tf.cx !== fx) {
+                    tf.rd = tf.cx === undefined ? (tf.x < fx ? -1 : 1) : Math.sign(fx - tf.cx);
+                    tf.cx = fx;
+                    tf.rs = 1;
+                    tufts.live.add(tf);
+                }
+    }
+    for (const tf of tufts.live) {
+        tf.rs = Math.max(0, tf.rs - dt * 1.3);
+        if (!tf.rs)
+            tufts.live.delete(tf);
+    }
 }
 
 export function drawTufts(g, tufts, season, weather) {
@@ -531,21 +703,62 @@ export function drawTufts(g, tufts, season, weather) {
         return;
     // thousands of pixels each frame: shade the colors once, write directly
     const C = GRASS[season].map(c => g.sh(c)), t = g.t, W = g.w, H = g.h;
+    const now = weather.t, dt = Math.min(0.25, Math.max(0, now - (tufts.t ?? now)));
+    tufts.t = now;
+    rustle(g, tufts, dt);
+    tuftWidth(W);
+    // the wind once per 4 px column
+    const L = tufts.lean = tufts.lean?.length === (W >> 2) + 1 ? tufts.lean : new Float32Array((W >> 2) + 1);
+    for (let i = 0; i < L.length; i++)
+        L[i] = weather.grassLean(i * 4 + 2);
     for (const tf of tufts) {
-        if (tf.y >= H || tf.x < 3 || tf.x >= W - 3)
+        if (tf.y >= H || tf.y < 12 || tf.x < 10 || tf.x >= W - 10)
             continue;
-        const lean = weather.lean(tf.x) * tf.k;
-        t.fill(C[0], tf.y * W + tf.x - 2, tf.y * W + tf.x + 3);
-        // five blades fanning out, the outer ones darker and shorter
-        for (let b = -2; b <= 2; b++) {
-            const h = tf.h - Math.abs(b) * 2 + (b === 1 ? 1 : 0), side = Math.abs(b) === 2;
-            for (let i = 0; i < h; i++) {
-                const k = (i + 1) / h, y = tf.y - 1 - i;
-                const x = tf.x + b + Math.round(b * k * 0.7 + lean * k * k * h * 0.45);
-                if (y >= 0 && x >= 0 && x < W)
-                    t[y * W + x] = i === h - 1 && !side ? C[4] : side ? C[1] : i < 2 ? C[2] : C[3];
-            }
+        let lean = L[tf.x >> 2] * tf.k, squash = 0;
+        if (tf.rs) {
+            // shaken hard at first, then dying away; bent down a little
+            lean += tf.rs * (0.35 * tf.rd + 0.9 * Math.sin(now * 21 + tf.x));
+            squash = Math.round(tf.rs * 2);
         }
+        const shape = tuftShape(tf.h - squash, tf.n, lean), base = tf.y * W + tf.x;
+        for (let i = 0; i < shape.length; i += 2)
+            t[base + shape[i]] = C[shape[i + 1]];
+    }
+}
+
+// The pixels of one tuft as [offset, color index] pairs for a row width
+// set by tuftWidth(); cached per height, width and lean in steps of 0.1.
+const SHAPES = new Map();
+let shapeW = 0;
+function tuftShape(h, n, lean) {
+    const q = Math.max(-40, Math.min(40, Math.round(lean * 10)));
+    const key = (h * 4 + n) * 100 + q + 50;
+    let sh = SHAPES.get(key);
+    if (sh)
+        return sh;
+    const W = shapeW, out = [];
+    for (let x = -n; x <= n; x++)
+        out.push(x, 0);
+    lean = q / 10;
+    // blades fanning out, the outer ones darker and shorter
+    for (let b = -n; b <= n; b++) {
+        const bh = h - Math.abs(b) * (n === 3 ? 1.5 : 2) + (b === 1 ? 1 : 0) | 0, side = Math.abs(b) === n;
+        for (let i = 0; i < bh; i++) {
+            const k = (i + 1) / bh;
+            const dx = Math.max(-9, Math.min(9, b + Math.round(b * k * 0.7 + lean * k * k * bh * 0.45)));
+            out.push(-(i + 1) * W + dx, i === bh - 1 && !side ? 4 : side ? 1 : i < 2 ? 2 : 3);
+        }
+    }
+    sh = Int32Array.from(out);
+    SHAPES.set(key, sh);
+    return sh;
+}
+
+// the cached shapes hold offsets for one screen width
+function tuftWidth(W) {
+    if (W !== shapeW) {
+        shapeW = W;
+        SHAPES.clear();
     }
 }
 

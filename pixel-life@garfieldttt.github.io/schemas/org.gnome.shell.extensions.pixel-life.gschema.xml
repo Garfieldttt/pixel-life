@@ -3,7 +3,7 @@
   <schema id="org.gnome.shell.extensions.pixel-life" path="/org/gnome/shell/extensions/pixel-life/">
     <key name="motif" type="s">
       <default>'village'</default>
-      <summary>Scene: auto, village, city, country, medieval, space or underwater</summary>
+      <summary>Scene: auto, village, city, country, medieval, arcade, airport, harbor, space or underwater</summary>
     </key>
     <key name="rotate-minutes" type="i">
       <range min="5" max="1440"/>

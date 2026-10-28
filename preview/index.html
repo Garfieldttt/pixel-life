@@ -13,7 +13,7 @@
 <body>
 <canvas id="c"></canvas>
 <div class="bar">
-  <select id="motif"><option value="village">Village</option><option value="city">City</option><option value="country">Country</option><option value="space">Space</option><option value="underwater">Under the sea</option><option value="auto">Alternate</option></select>
+  <select id="motif"><option value="village">Village</option><option value="city">City</option><option value="country">Country</option><option value="medieval">Medieval town</option><option value="arcade">Arcade hall</option><option value="airport">Airport</option><option value="harbor">Harbor</option><option value="space">Space</option><option value="underwater">Under the sea</option><option value="auto">Alternate</option></select>
   <label>Speed <select id="speed"><option>1</option><option>10</option><option>60</option><option>300</option><option>1200</option></select></label>
   <label>Hour <input id="hour" type="range" min="0" max="23.9" step="0.1"></label><span id="time"></span>
   <label>Month <select id="month"></select></label>
@@ -56,7 +56,11 @@ $('clock').onchange = ev => (e.opts.clock = ev.target.value);
 const EVENTS = {village: ['fireworks', 'musician', 'kids', 'crows', 'festival'], city: ['kids', 'chase', 'ambulance', 'fire', 'icecream', 'fireworks', 'outage', 'marathon', 'ducks', 'balloon', 'musician', 'catcross', 'tourists', 'wedding'],
     country: ['train', 'tractor', 'hikers', 'kite', 'deer', 'rabbit', 'fox', 'fireworks'],
     space: ['cruiser', 'patrol', 'dogfight', 'freighter', 'jump', 'arrive', 'shuttle', 'comet', 'asteroids', 'probe'],
-    underwater: ['sub', 'merfolk', 'diver', 'school', 'turtle', 'shark', 'manta', 'whale', 'jelly', 'boat', 'crab']};
+    underwater: ['sub', 'merfolk', 'diver', 'school', 'turtle', 'shark', 'manta', 'whale', 'jelly', 'boat', 'crab'],
+    medieval: ['knight', 'messenger', 'caravan', 'royal', 'procession', 'pilgrims', 'herd', 'geese', 'pigs', 'crier', 'minstrel', 'juggler', 'pillory', 'drunk', 'wedding'],
+    arcade: ['highscore', 'repair', 'party', 'cleaner', 'group', 'power'],
+    airport: ['jumbo', 'cargo', 'bizjet', 'cessna', 'goaround', 'salute', 'plow', 'fireworks'],
+    harbor: ['tallship', 'tug', 'pilot', 'cutter', 'regatta', 'yacht', 'motorboat', 'rowboat', 'cutterOut', 'cutterHome', 'far', 'gulls', 'ship', 'ferry', 'fireworks']};
 const renderEvents = () => {
     $('events').innerHTML = '';
     for (const name of EVENTS[e.motif.name] || []) {

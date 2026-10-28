@@ -164,7 +164,7 @@ export class Village extends World {
                 continue;
             const size = treeSize(26, 34), bx = x * TILE + randi(0, 10), by = (ty + 1) * TILE - randi(0, 8);
             const pine = chance(0.4), seed = randi(0, 1e6);
-            this.add(by, (g, e) => (pine ? O.pine(g, bx, by, Math.round(size * 1.1), this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), seed, e.weather.snowCover)),
+            this.add(by, (g, e) => (pine ? A.fir(g, bx, by, size, this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), seed, e.weather.snowCover)),
                 [bx - size * 2, by - size * 3.4, size * 4, size * 3.4], null, true, true);
         }
         // plaza centerpiece and furniture
@@ -239,7 +239,7 @@ export class Village extends World {
             place(tw, th, (x, y) => {
                 const mx = x + (tw >> 1), bx = mx * TILE + 8, by = y * TILE + 14, seed = randi(0, 1e6);
                 const kind = weighted([['oak', 4], ['maple', 2], ['fruit', 2], ['pine', 1.5]]);
-                this.add(by, (g, e) => (kind === 'pine' ? O.pine(g, bx, by, Math.round(size * 1.1), this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), kind === 'fruit' ? seed - (seed % 4) + 1 : seed, e.weather.snowCover)),
+                this.add(by, (g, e) => (kind === 'pine' ? A.fir(g, bx, by, size, this._season(e), seed, e.weather.snowCover) : A.bigTree(g, bx, by, size, this._season(e), kind === 'fruit' ? seed - (seed % 4) + 1 : seed, e.weather.snowCover)),
                     [bx - size * 2, by - size * 3.4, size * 4, size * 3.4 + 4], [mx, y, 1, 1], true, true);
             });
         }
@@ -308,8 +308,9 @@ export class Village extends World {
         this._tuftSpots = [];
         for (let y = mainY + 2; y < R; y++)
             for (let x = 0; x < C; x++)
-                if (ter.get(x, y) === T.GRASS && chance(0.7))
-                    this._tuftSpots.push([x * TILE + randi(3, 13), y * TILE + randi(4, 15)]);
+                for (let k = 0; k < 2; k++)
+                    if (ter.get(x, y) === T.GRASS && chance(0.75))
+                        this._tuftSpots.push([x * TILE + randi(3, 13), y * TILE + randi(4, 15)]);
         this._tuftSeed = randi(0, 1e6);
         // ducks start on open water, never on the pier or under the boat
         const nDucks = randi(2, 5);
@@ -934,10 +935,6 @@ export class Village extends World {
                 box = [left - 4, o.y - f.h - 14, f.w + 8, f.h + 16];
                 if (o.state === 'fish')
                     this._fishing(g, o, env);
-                if (o.p.lantern && env.dark > 0.5) {
-                    g.rectE(o.x + 6, o.y - 14, 3, 4, 0xffd070);
-                    g.glow(o.x + 7, o.y - 12, 18, 0xffc060, 0.35);
-                }
             } else if (kind === 1) {
                 const f = catFigure(o.cat, o.state === 'walk' ? (Math.floor(o.t * 6) % 2 ? 'walk1' : 'walk2') : 'sit');
                 drawFigure(g, f, o.x - f.w / 2, o.y, o.dir < 0);

@@ -585,7 +585,7 @@ export class Medieval {
             this.pitches.push({x, w: 52, goods: pick(STALLS), awning: pick(AWNINGS), vendor: null});
         // a stretch of grass along the bottom
         const spots = [];
-        for (let i = 0; i < W / 9; i++)
+        for (let i = 0; i < W / 4; i++)
             spots.push([randi(4, W - 4), this.squareBot + randi(8, 16)]);
         this.tufts = A.makeTufts(spots, randi(0, 1e6));
         // small weeds at the foot of the walls and along the kerbs
@@ -3000,7 +3000,13 @@ export class Medieval {
         const wk = G.walker;
         wk.state = 'walk';
         drawPerson(g, wk, wk.wx, G.walkY + 10, wk.dir, env);
-        this._restore(g, wk.wx - 4, G.walkY - 9, 26, 12);
+        // the wall face hides him up to the walk, the merlons above it;
+        // in the gaps between them he stays in view
+        const wt = G.walkY + 1;
+        this._restore(g, wk.wx - 4, wt - 1, 26, 13);
+        for (let x = Math.floor(wk.wx) - 4; x < wk.wx + 22; x++)
+            if (x >= G.x && (x - G.x) % 12 < 8)
+                this._restore(g, x, wt - 9, 1, 8);
         if (env.dark > 0.5 && !this.cal.gateOpen) {
             // a guard with a lantern at the shut gate
             const gd = G.guards[0];

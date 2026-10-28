@@ -113,6 +113,10 @@ export class Gfx {
         this.emCache = new Map();
         this.ar = this.ag = this.ab = 1;
         this.layerVersion = 0;
+        // feet drawn on screen this frame and the last ([x, y, width]
+        // flat, from footShadow), so grass can rustle where somebody walks
+        this.steps = [];
+        this.prevSteps = [];
         this.resize(w, h);
     }
 
@@ -454,6 +458,8 @@ export class Gfx {
     footShadow(cx, bottom, w, a = 0.3) {
         const half = Math.max(2, Math.round(w / 2)), y = Math.floor(bottom) - 1;
         cx = Math.floor(cx);
+        if (this.t === this.buf)
+            this.steps.push(cx, y + 1, half);
         const end = Math.max(1, Math.round(half * 0.65));
         this.blend(cx - end, y - 1, end * 2, 1, 0x1a1028, a * 0.7);
         this.blend(cx - half, y, half * 2, 1, 0x1a1028, a);
